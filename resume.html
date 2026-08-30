@@ -275,7 +275,7 @@
       <div class="hint" style="text-align:left;margin:6px 0 10px;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
         支持 PDF、Word（.docx / .doc）、Excel（.xlsx / .xls）、文本及照片截图。识别在本页面内完成，结果自动填入下方空白项，不会覆盖已填写内容。
       </div>
-      <input type="file" id="resumeFile" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,.jpg,.jpeg,.png,.gif,.webp,.bmp" style="display:none" />
+      <input type="file" id="resumeFile" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt" style="display:none" />
       <input type="file" id="resumeImageFile" accept="image/*" style="display:none" />
       <button type="button" class="upload-btn" id="btnUpload">上传简历文件（PDF / Word / Excel）</button>
       <button type="button" class="upload-btn upload-btn-image" id="btnUploadImage">拍照 / 相册识别图片</button>
@@ -2475,18 +2475,24 @@ document.addEventListener('change',function(e){
 
   /* ======================================================================
      图片 OCR（按需加载 tesseract.js）
-     加载顺序：同域本地文件（ocr/ 目录，与页面放在一起部署即可）
-     → 国内镜像 → 官方 CDN 自动回退，适配微信内置浏览器及国内网络环境
+     引擎大文件（worker / WASM 约 4MB + 中文语言包约 1.7MB）优先走国内 CDN，
+     避免 github.io 在国内手机移动网络下下载慢导致超时；
+     本地同域文件、官方 CDN 依次回退，适配微信内置浏览器及国内网络环境
      ====================================================================== */
   var TESS_SCRIPT_SOURCES = [
-    "ocr/tesseract.min.js",
-    "https://registry.npmmirror.com/tesseract.js/5.1.1/files/dist/tesseract.min.js",
     "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js",
+    "https://registry.npmmirror.com/tesseract.js/5.1.1/files/dist/tesseract.min.js",
+    "ocr/tesseract.min.js",
     "https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"
   ];
-  /* 本地部署：worker、wasm 引擎、语言包全部走同域相对路径（无跨域、无墙）；
-     本地文件缺失时回退官方 CDN（worker/core 用库内置默认地址） */
+  /* 大文件（WASM 约 4MB + 语言包约 1.7MB）走 jsdmirror（Cloudflare 全球加速，最快）；
+     小文件走 jsdelivr；本地同域、官方 CDN 依次回退 */
   var TESS_WORKER_CONFIGS = [
+    {
+      workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",
+      corePath: "https://cdn.jsdmirror.cn/npm/tesseract.js-core@5.1.1",
+      langPath: "https://cdn.jsdmirror.cn/gh/naptha/tessdata@gh-pages/4.0.0_fast"
+    },
     { workerPath: "ocr/worker.min.js", corePath: "ocr", langPath: "ocr/tessdata" },
     { langPath: "https://tessdata.projectnaptha.com/4.0.0_fast" }
   ];
