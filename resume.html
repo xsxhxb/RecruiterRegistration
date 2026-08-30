@@ -247,6 +247,12 @@
     color: #16a34a;
     border: 1.5px solid #16a34a;
   }
+  .upload-btn-clear {
+    margin-top: 8px;
+    background: #fff;
+    color: #ef4444;
+    border: 1.5px solid #ef4444;
+  }
   .upload-status {
     font-size: 13px; color: var(--text-light);
     margin-top: 10px; line-height: 1.7; display: none;
@@ -279,6 +285,7 @@
       <input type="file" id="resumeImageFile" accept="image/*" style="display:none" />
       <button type="button" class="upload-btn" id="btnUpload">上传简历文件（PDF / Word / Excel）</button>
       <button type="button" class="upload-btn upload-btn-image" id="btnUploadImage">拍照 / 相册识别图片</button>
+      <button type="button" class="upload-btn upload-btn-clear" id="btnClear">清空已填数据</button>
       <div class="upload-status" id="uploadStatus"></div>
       <div class="ocr-result" id="uploadResult"></div>
     </div>
@@ -1738,6 +1745,7 @@ document.addEventListener('change',function(e){
   var imageInput = document.getElementById("resumeImageFile");
   var btnUpload = document.getElementById("btnUpload");
   var btnUploadImage = document.getElementById("btnUploadImage");
+  var btnClear = document.getElementById("btnClear");
   var statusEl = document.getElementById("uploadStatus");
   var resultEl = document.getElementById("uploadResult");
 
@@ -2938,7 +2946,8 @@ document.addEventListener('change',function(e){
   function resetForm() {
     var els = form.elements;
     var i, el;
-    /* 清空所有字段值 */
+    /* 彻底清空每个字段值：文本框/下拉/日期置空，单选/复选取消勾选，
+       不保留任何默认值（含性别、签名日期） */
     for (i = 0; i < els.length; i++) {
       el = els[i];
       if (!el.name) continue;
@@ -2947,16 +2956,6 @@ document.addEventListener('change',function(e){
       } else {
         el.value = "";
       }
-    }
-    /* 恢复默认性别"男" */
-    var male = form.querySelector('input[name="gender"][value="男"]');
-    if (male) male.checked = true;
-    /* 签名日期默认今天 */
-    if (form.signDate) {
-      var td = new Date();
-      form.signDate.value = td.getFullYear() + "-" +
-        String(td.getMonth() + 1).padStart(2, "0") + "-" +
-        String(td.getDate()).padStart(2, "0");
     }
     /* 多条目重置为一条空条目 */
     ["edu", "work", "proj"].forEach(function (type) {
@@ -3192,6 +3191,16 @@ document.addEventListener('change',function(e){
     imageInput.value = "";
     handleFile(f);
   });
+  /* 清空已填数据：彻底清空所有字段（含性别单选、签名日期、多条目），无残留 */
+  if (btnClear) {
+    btnClear.addEventListener("click", function () {
+      resetForm();
+      resultEl.style.display = "none";
+      setStatus("已清空所有数据");
+      setTimeout(function () { statusEl.style.display = "none"; }, 1800);
+      toast("已清空所有已填数据");
+    });
+  }
 })();
 </script>
 </body>
