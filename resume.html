@@ -1,0 +1,2878 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="format-detection" content="telephone=no" />
+<title>候选人信息登记表</title>
+<script src="https://unpkg.com/lz-string@1.5.0/libs/lz-string.min.js"></script>
+<style>
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --bg: #f1f5f9;
+    --card: #ffffff;
+    --text: #0f172a;
+    --text-light: #64748b;
+    --border: #e2e8f0;
+    --error: #ef4444;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-text-size-adjust: 100%;
+  }
+  .header {
+    position: sticky; top: 0; z-index: 10;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    color: #fff;
+    padding: 18px 16px 16px;
+    box-shadow: 0 2px 10px rgba(37, 99, 235, 0.25);
+  }
+  .header h1 { margin: 0; font-size: 19px; font-weight: 600; }
+  .header .sub { margin-top: 4px; font-size: 12px; opacity: 0.85; }
+  .container { padding: 14px 14px 110px; max-width: 640px; margin: 0 auto; }
+  .section {
+    background: var(--card);
+    border-radius: var(--radius);
+    margin-bottom: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+  }
+  .section-title {
+    display: flex; align-items: center; gap: 8px;
+    padding: 13px 16px;
+    font-size: 15px; font-weight: 600;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+  }
+  .section-title .dot {
+    width: 4px; height: 16px; border-radius: 2px;
+    background: var(--primary);
+  }
+  .section-body { padding: 4px 16px 12px; }
+  .field { padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+  .field:last-child { border-bottom: none; }
+  .label { display: block; font-size: 13px; color: var(--text-light); margin-bottom: 6px; }
+  .label .req { color: var(--error); margin-left: 2px; }
+  .input, .select, .textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 10px 12px;
+    font-size: 15px;
+    color: var(--text);
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    font-family: inherit;
+  }
+  .input:focus, .select:focus, .textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  }
+  .textarea { resize: vertical; min-height: 88px; line-height: 1.55; }
+  .select { appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='%2364748b' d='M6 8L2 4h8z'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 34px;
+  }
+  .radio-group { display: flex; flex-wrap: wrap; gap: 10px; }
+  .radio-item {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 9px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    background: #fff;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .radio-item input { margin: 0; accent-color: var(--primary); }
+  .radio-item:has(input:checked) {
+    border-color: var(--primary);
+    background: rgba(37, 99, 235, 0.06);
+    color: var(--primary-dark);
+  }
+  .row { display: flex; gap: 10px; }
+  .row .field { flex: 1; }
+
+  /* 多条目 */
+  .entries { margin-top: 4px; }
+  .entry {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px 12px;
+    margin-bottom: 10px;
+    background: #f8fafc;
+    position: relative;
+  }
+  .entry .del {
+    position: absolute; top: 8px; right: 8px;
+    width: 26px; height: 26px;
+    border-radius: 6px; border: none;
+    background: rgba(15,23,42,0.06); color: #94a3b8;
+    font-size: 16px; line-height: 1;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .entry .del:active { background: rgba(239,68,68,0.12); color: var(--error); }
+  .add-btn {
+    width: 100%;
+    border: 1px dashed var(--border);
+    background: transparent;
+    border-radius: 9px;
+    padding: 10px;
+    color: var(--text-light);
+    font-size: 14px;
+    cursor: pointer;
+    margin-top: 2px;
+    font-family: inherit;
+  }
+  .add-btn:active { border-color: var(--primary); color: var(--primary); }
+
+  .actions {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    background: rgba(255,255,255,0.96);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-top: 1px solid var(--border);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    display: flex; gap: 10px;
+    max-width: 640px; margin: 0 auto;
+  }
+  .btn {
+    flex: 1; border: none; border-radius: 11px;
+    padding: 13px 0; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: transform 0.1s, opacity 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    font-family: inherit;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.6; }
+  .btn-word { background: #fff; color: var(--primary); border: 1.5px solid var(--primary); }
+  .btn-pdf { background: var(--primary); color: #fff; }
+  .btn-pdf.processing { background: var(--text-light); }
+  .toast {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%) scale(0.9);
+    background: rgba(15,23,42,0.92); color: #fff;
+    padding: 14px 22px; border-radius: 12px; font-size: 14px;
+    z-index: 100; opacity: 0; pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    text-align: center; max-width: 80%;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  .hint { font-size: 12px; color: var(--text-light); margin-top: 14px; text-align: center; line-height: 1.7; padding: 0 8px; }
+  .err-msg { color: var(--error); font-size: 12px; margin-top: 4px; display: none; }
+  .field.invalid .input, .field.invalid .select, .field.invalid .textarea { border-color: var(--error); }
+  .field.invalid .err-msg { display: block; }
+  .input-invalid { border-color: var(--error) !important; box-shadow: 0 0 0 2px rgba(239,68,68,0.18) !important; }
+  .entry-invalid { outline: 2px solid var(--error); outline-offset: 2px; }
+  .commitment-box {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-left: 3px solid var(--primary);
+    border-radius: 9px;
+    padding: 12px 14px;
+  }
+  .commitment-box p {
+    margin: 0 0 6px;
+    font-size: 13px;
+    line-height: 1.75;
+    color: #334155;
+    text-indent: 2em;
+  }
+  .commitment-box p:last-child { margin-bottom: 0; }
+
+  /* 微信引导遮罩 */
+  .wx-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    background: rgba(0,0,0,0.88);
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 30px;
+  }
+  .wx-overlay.show { display: flex; }
+  .wx-box {
+    background: #fff; border-radius: 16px; padding: 24px 20px;
+    max-width: 320px; text-align: center; color: #0f172a;
+  }
+  .wx-box h3 { margin: 0 0 12px; font-size: 17px; color: var(--primary-dark); }
+  .wx-box p { margin: 0 0 8px; font-size: 14px; line-height: 1.6; color: #475569; }
+  .wx-box .arrow { font-size: 28px; margin: 10px 0; }
+  .wx-box .btn-close {
+    margin-top: 16px; width: 100%;
+    background: var(--primary); color: #fff; border: none;
+    border-radius: 10px; padding: 11px; font-size: 15px; font-weight: 600;
+  }
+
+  /* 处理中遮罩 */
+  .loading {
+    position: fixed; inset: 0; z-index: 200;
+    background: rgba(255,255,255,0.7);
+    display: none; align-items: center; justify-content: center;
+  }
+  .loading.show { display: flex; }
+  .loading .spin {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 上传简历识别 */
+  .upload-btn {
+    width: 100%; border: none; border-radius: 11px;
+    padding: 12px 0; font-size: 15px; font-weight: 600;
+    background: linear-gradient(135deg, #16a34a, #15803d);
+    color: #fff; cursor: pointer; font-family: inherit;
+    transition: transform 0.1s, opacity 0.15s;
+  }
+  .upload-btn:active { transform: scale(0.97); }
+  .upload-btn:disabled { opacity: 0.6; }
+  .upload-status {
+    font-size: 13px; color: var(--text-light);
+    margin-top: 10px; line-height: 1.7; display: none;
+  }
+  .ocr-result {
+    margin-top: 10px; background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 9px; padding: 10px 12px; font-size: 13px;
+    color: #166534; line-height: 1.8; display: none;
+  }
+  .ocr-result .t { font-weight: 600; margin-bottom: 2px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>候选人信息登记表</h1>
+  <div class="sub">请如实填写以下信息，完成后可导出 Word / PDF 简历</div>
+</div>
+
+<form class="container" id="resumeForm" autocomplete="on">
+
+  <!-- 上传简历自动识别 -->
+  <div class="section">
+    <div class="section-title"><span class="dot" style="background:#16a34a"></span>上传简历自动识别（可选）</div>
+    <div class="section-body">
+      <div class="hint" style="text-align:left;margin:6px 0 10px;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+        支持 PDF、Word（.docx / .doc）、Excel（.xlsx / .xls）、文本及照片截图。识别在本页面内完成，结果自动填入下方空白项，不会覆盖已填写内容。
+      </div>
+      <input type="file" id="resumeFile" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt,image/*" style="display:none" />
+      <button type="button" class="upload-btn" id="btnUpload">上传简历文件 / 拍照识别</button>
+      <div class="upload-status" id="uploadStatus"></div>
+      <div class="ocr-result" id="uploadResult"></div>
+    </div>
+  </div>
+
+  <!-- 基本信息 -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>基本信息</div>
+    <div class="section-body">
+      <div class="row">
+        <div class="field">
+          <label class="label">姓名<span class="req">*</span></label>
+          <input class="input" name="name" required placeholder="请输入姓名" />
+          <div class="err-msg">请输入姓名</div>
+        </div>
+        <div class="field">
+          <label class="label">性别<span class="req">*</span></label>
+          <div class="radio-group">
+            <label class="radio-item"><input type="radio" name="gender" value="男" checked />男</label>
+            <label class="radio-item"><input type="radio" name="gender" value="女" />女</label>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label class="label">出生年月<span class="req">*</span></label>
+          <input class="input" name="birth" type="month" required />
+          <div class="err-msg">请选择出生年月</div>
+          <div class="hint" style="text-align:left;margin-top:4px;padding:0">仅用于核实法定就业年龄，不用于其他筛选目的</div>
+        </div>
+        <div class="field">
+          <label class="label">身高（cm）<span class="req">*</span></label>
+          <input class="input" name="height" type="number" min="0" required placeholder="如：175" />
+          <div class="err-msg">请输入身高</div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label class="label">体重（kg）</label>
+          <input class="input" name="weight" type="number" min="0" placeholder="如：65" />
+        </div>
+        <div class="field">
+          <label class="label">婚姻状态</label>
+          <select class="select" name="marital">
+            <option value="">请选择</option>
+            <option>未婚</option>
+            <option>已婚</option>
+            <option>离异</option>
+            <option>丧偶</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">政治面貌</label>
+        <select class="select" name="political">
+          <option value="">请选择</option>
+          <option>群众</option>
+          <option>共青团员</option>
+          <option>中共党员</option>
+          <option>其他</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">籍贯<span class="req">*</span></label>
+        <input class="input" name="nativePlace" required placeholder="如：浙江杭州" />
+        <div class="err-msg">请输入籍贯</div>
+      </div>
+      <div class="field">
+        <label class="label">现居住地<span class="req">*</span></label>
+        <input class="input" name="currentAddress" required placeholder="如：浙江省杭州市西湖区XX街道XX路XX号" />
+        <div class="hint" style="text-align:left;margin-top:4px;padding:0">请填写详细地址（省 / 市 / 区 / 街道门牌号）</div>
+        <div class="err-msg">请输入现居住地</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 联系方式 -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>联系方式</div>
+    <div class="section-body">
+      <div class="field">
+        <label class="label">手机号码<span class="req">*</span></label>
+        <input class="input" name="phone" type="tel" required pattern="1[3-9]\d{9}" placeholder="请输入11位手机号" />
+        <div class="err-msg">请输入正确的手机号</div>
+      </div>
+      <div class="field">
+        <label class="label">电子邮箱</label>
+        <input class="input" name="email" type="email" placeholder="如：example@email.com" />
+        <div class="err-msg">请输入正确的邮箱</div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label class="label">紧急联系人姓名<span class="req">*</span></label>
+          <input class="input" name="emergencyName" required placeholder="如：张三" />
+          <div class="err-msg">请输入紧急联系人姓名</div>
+        </div>
+        <div class="field">
+          <label class="label">紧急联系人关系<span class="req">*</span></label>
+          <input class="input" name="emergencyRelation" required placeholder="如：父亲" />
+          <div class="err-msg">请输入紧急联系人关系</div>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">紧急联系人电话<span class="req">*</span></label>
+        <input class="input" name="emergencyPhone" type="tel" required pattern="1[3-9]\d{9}" placeholder="联系电话" />
+        <div class="err-msg">请输入正确的手机号</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 教育与求职 -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>教育与求职</div>
+    <div class="section-body">
+      <div class="row">
+        <div class="field">
+          <label class="label">最高学历<span class="req">*</span></label>
+          <select class="select" name="education" required>
+            <option value="">请选择</option>
+            <option>博士</option>
+            <option>硕士</option>
+            <option>本科</option>
+            <option>大专</option>
+            <option>高中/中专</option>
+            <option>其他</option>
+          </select>
+          <div class="err-msg">请选择最高学历</div>
+        </div>
+        <div class="field">
+          <label class="label">工作年限</label>
+          <input class="input" name="expYears" type="number" min="0" placeholder="如：3" />
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">期望岗位</label>
+        <input class="input" name="position" placeholder="如：高级前端工程师" />
+      </div>
+      <div class="row">
+        <div class="field">
+          <label class="label">期望薪资</label>
+          <input class="input" name="salary" placeholder="如：15-20K" />
+        </div>
+        <div class="field">
+          <label class="label">招聘渠道<span class="req">*</span></label>
+          <select class="select" name="channel" required>
+            <option value="">请选择</option>
+            <option>BOSS直聘</option>
+            <option>智联招聘</option>
+            <option>前程无忧</option>
+            <option>拉勾网</option>
+            <option>猎聘</option>
+            <option>内部推荐</option>
+            <option>校园招聘</option>
+            <option>公司官网</option>
+            <option>其他</option>
+          </select>
+          <div class="err-msg">请选择招聘渠道</div>
+        </div>
+      </div>
+      <div class="field" id="referrerWrap" style="display:none">
+        <label class="label">推荐人姓名<span class="req">*</span></label>
+        <input class="input" name="referrerName" placeholder="如：王五（本公司在职员工）" />
+        <div class="hint" style="text-align:left;margin-top:4px;padding:0">内部推荐请填写推荐人姓名及所在部门</div>
+        <div class="err-msg">请填写推荐人姓名</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 教育经历（多条目） -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>教育经历<span style="color:var(--error);margin-left:2px;">*</span></div>
+    <div class="section-body">
+      <div class="entries" id="eduEntries"></div>
+      <button type="button" class="add-btn" onclick="addEntry('edu')">+ 添加教育经历</button>
+    </div>
+  </div>
+
+  <!-- 工作经历（多条目） -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>工作经历<span style="color:var(--error);margin-left:2px;">*</span></div>
+    <div class="section-body">
+      <div class="hint" style="text-align:left;margin:0 0 8px;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">实习生可填写实习经历；若暂无任何工作 / 实习经历，请在"工作内容"中填写"无"。</div>
+      <div class="entries" id="workEntries"></div>
+      <button type="button" class="add-btn" onclick="addEntry('work')">+ 添加工作经历</button>
+    </div>
+  </div>
+
+  <!-- 项目经历（多条目） -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>项目经历</div>
+    <div class="section-body">
+      <div class="entries" id="projEntries"></div>
+      <button type="button" class="add-btn" onclick="addEntry('proj')">+ 添加项目经历</button>
+    </div>
+  </div>
+
+  <!-- 技能与自我评价 -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>技能与其他</div>
+    <div class="section-body">
+      <div class="field">
+        <label class="label">专业技能</label>
+        <textarea class="textarea" name="skills" placeholder="如：熟练掌握 JavaScript/TypeScript，熟悉 Vue/React 框架..."></textarea>
+      </div>
+      <div class="field">
+        <label class="label">语言能力</label>
+        <input class="input" name="language" placeholder="如：英语 CET-6，可流畅读写" />
+      </div>
+      <div class="field">
+        <label class="label">证书与荣誉</label>
+        <input class="input" name="certs" placeholder="如：PMP、软考高级、CPA" />
+      </div>
+      <div class="field">
+        <label class="label">兴趣爱好</label>
+        <input class="input" name="hobby" placeholder="如：阅读、跑步、摄影" />
+      </div>
+      <div class="field">
+        <label class="label">自我评价</label>
+        <textarea class="textarea" name="selfEval" placeholder="简述个人优势、性格特点、职业规划等"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- 亲属关系 -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>亲属关系声明</div>
+    <div class="section-body">
+      <div class="field">
+        <label class="label">有无直系亲属或利害关系人在本公司任职？<span class="req">*</span></label>
+        <select class="select" name="hasRelative" required>
+          <option value="">请选择</option>
+          <option value="无">无</option>
+          <option value="有">有</option>
+        </select>
+        <div class="err-msg">请选择</div>
+      </div>
+      <div class="field" id="relativeDetailWrap" style="display:none">
+        <label class="label">请写明具体姓名及部门<span class="req">*</span></label>
+        <input class="input" name="relativeDetail" placeholder="如：技术部 李四（表兄弟）" />
+        <div class="hint" style="text-align:left;margin-top:4px;padding:0">请填写该亲属/关系人的姓名及其所在部门</div>
+        <div class="err-msg">请填写姓名及部门</div>
+      </div>
+      <div class="hint" style="text-align:left;margin-top:8px;padding:0;background:#f8fafc;border-radius:8px;padding:8px 12px;border:1px solid #e2e8f0;">本信息仅用于避免潜在利益冲突，不影响您的面试录用评估。</div>
+    </div>
+  </div>
+
+  <!-- 信息真实性承诺与签名 -->
+  <div class="section">
+    <div class="section-title"><span class="dot"></span>信息真实性承诺与签名</div>
+    <div class="section-body">
+      <div class="commitment-box">
+        <p>本人郑重承诺：</p>
+        <p>本人确认本表所载各项信息均真实、准确、完整，不存在不实陈述或重大遗漏。</p>
+        <p>本人同意授权本公司及本公司合作的第三方背景调查机构，对本人的任职履历、学历资质、无犯罪记录等信息进行核实（核实前将另行单独取得本人书面授权）。</p>
+        <p>本人承诺入职时按要求提供真实有效的证件及证明文件。</p>
+        <p>如经核实存在虚假信息，本人理解并接受公司可据此不予录用或解除劳动关系，且无须支付任何经济补偿。</p>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <div class="field" style="flex:2">
+          <label class="label">申请人签名<span class="req">*</span></label>
+          <input class="input" name="signature" required placeholder="请输入姓名作为电子签名" />
+          <div class="err-msg">请输入申请人签名</div>
+        </div>
+        <div class="field" style="flex:1">
+          <label class="label">签名日期<span class="req">*</span></label>
+          <input class="input" name="signDate" type="date" required />
+          <div class="err-msg">请选择签名日期</div>
+        </div>
+      </div>
+      <div class="hint" style="text-align:left;margin-top:8px;padding:0">所填写姓名与日期即视为本人签署确认，与手写签名具有同等效力。</div>
+    </div>
+  </div>
+
+  <div class="hint">
+    填写完成后点击下方按钮即可导出简历文件并保存到手机本地。<br />
+    Word 适合后续编辑修改，PDF 适合直接查看与投递。
+  </div>
+</form>
+
+<div class="actions">
+  <button class="btn btn-word" id="btnWord" type="button">导出 Word</button>
+  <button class="btn btn-pdf" id="btnPdf" type="button">导出 PDF</button>
+</div>
+<script>if(/MicroMessenger/i.test(navigator.userAgent)){document.getElementById('btnWord').textContent='导出图片';}</script>
+
+<div class="toast" id="toast"></div>
+
+<div class="loading" id="loading"><div class="spin"></div></div>
+
+<div class="wx-overlay" id="wxOverlay">
+  <div class="wx-box">
+    <h3>请在浏览器中导出 PDF</h3>
+    <p>当前为微信内置浏览器，无法直接下载 PDF 文件。</p>
+    <p>请点击右上角 <strong>···</strong> 按钮</p>
+    <div class="arrow">↗</div>
+    <p>选择 <strong>"在浏览器中打开"</strong></p>
+    <p style="color:#16a34a;font-size:13px;margin-top:10px;font-weight:600;">已填内容将自动带到浏览器，打开后直接点"导出 PDF"即可</p>
+    <button class="btn-close" id="wxClose">我知道了</button>
+  </div>
+</div>
+
+<div class="wx-overlay" id="wxImgOverlay">
+  <div class="wx-box">
+    <h3>简历图片已生成</h3>
+    <p>请<strong>长按下方图片</strong>，选择"保存图片"存到手机相册</p>
+    <div id="wxImageWrap" style="margin:12px 0;max-height:55vh;overflow-y:auto;-webkit-overflow-scrolling:touch;border:1px solid #e2e8f0;border-radius:8px;padding:8px;background:#fff;"></div>
+    <p style="color:#94a3b8;font-size:11px;margin-top:4px;">保存后可直接发送给 HR 或打印使用</p>
+    <button class="btn-close" id="wxImgClose">关闭</button>
+  </div>
+</div>
+
+<script>
+/* ============ 多条目管理（来自面试登记） ============ */
+var entryTemplates = {
+  edu: [
+    {n:'eduStart',l:'开始时间',t:'month',ph:''},
+    {n:'eduEnd',l:'结束时间',t:'month',ph:''},
+    {n:'eduSchool',l:'学校*',t:'text',ph:'例：浙江大学'},
+    {n:'eduMajor',l:'专业',t:'text',ph:'例：计算机科学与技术'},
+    {n:'eduDegree',l:'学历*',t:'select',opts:['','大专','本科','硕士','博士']}
+  ],
+  work: [
+    {n:'wkStart',l:'开始时间',t:'month'},
+    {n:'wkEnd',l:'结束时间',t:'month',ph:'至今填至今'},
+    {n:'wkCompany',l:'公司',t:'text',ph:'公司或实习单位名称'},
+    {n:'wkPos',l:'职位',t:'text',ph:'如：前端工程师 / 实习生'},
+    {n:'wkSalary',l:'月薪',t:'text',ph:'例：15K'},
+    {n:'wkReason',l:'离职原因',t:'text',ph:'例：个人发展'},
+    {n:'wkDesc',l:'工作内容',t:'textarea',ph:'简要描述主要职责与成果；若无工作/实习经历请填"无"'}
+  ],
+  proj: [
+    {n:'pjStart',l:'开始时间',t:'month'},
+    {n:'pjEnd',l:'结束时间',t:'month'},
+    {n:'pjName',l:'项目名称',t:'text',ph:'例：某电商平台重构'},
+    {n:'pjRole',l:'担任角色',t:'text',ph:'例：前端负责人'},
+    {n:'pjDesc',l:'项目描述',t:'textarea',ph:'项目背景、技术栈、个人贡献与成果'}
+  ]
+};
+function addEntry(type){
+  var wrap=document.getElementById(type+'Entries');
+  var div=document.createElement('div');
+  div.className='entry';
+  var html='<button type="button" class="del" onclick="this.parentNode.remove()">×</button>';
+  var fields=entryTemplates[type];
+  var dateFields=fields.filter(function(f){return f.t==='month';});
+  var otherFields=fields.filter(function(f){return f.t!=='month';});
+  if(dateFields.length===2){
+    html+='<div class="row">';
+    dateFields.forEach(function(f){html+=fieldHtml(f);});
+    html+='</div>';
+  }
+  otherFields.forEach(function(f){
+    html+=f.t==='textarea'?'<div class="field">'+fieldInner(f)+'</div>':fieldHtml(f);
+  });
+  div.innerHTML=html;
+  wrap.appendChild(div);
+}
+function fieldHtml(f){return '<div class="field">'+fieldInner(f)+'</div>';}
+function fieldInner(f){
+  var lbl='<label class="label">'+f.l+'</label>';
+  var inp='';
+  if(f.t==='select'){
+    inp='<select class="select" name="'+f.n+'"><option value="">请选择</option>'+
+      (f.opts||[]).filter(function(o){return o;}).map(function(o){return '<option>'+o+'</option>';}).join('')+
+      '</select>';
+  }else if(f.t==='textarea'){
+    inp='<textarea class="textarea" name="'+f.n+'" placeholder="'+(f.ph||'')+'"></textarea>';
+  }else{
+    inp='<input class="input" name="'+f.n+'" type="'+(f.t==='month'?'month':'text')+'" placeholder="'+(f.ph||'')+'" />';
+  }
+  return lbl+inp;
+}
+['edu','work','proj'].forEach(addEntry);
+
+/* 亲属联动 + 招聘渠道联动（内部推荐显示推荐人） */
+document.addEventListener('change',function(e){
+  if(e.target.name==='hasRelative'){
+    document.getElementById('relativeDetailWrap').style.display = e.target.value==='有'?'block':'none';
+  }
+  if(e.target.name==='channel'){
+    document.getElementById('referrerWrap').style.display = e.target.value==='内部推荐'?'block':'none';
+  }
+});
+
+(function () {
+  "use strict";
+
+  var form = document.getElementById("resumeForm");
+  var toastEl = document.getElementById("toast");
+  var btnWord = document.getElementById("btnWord");
+  var btnPdf = document.getElementById("btnPdf");
+  var loadingEl = document.getElementById("loading");
+  var wxOverlay = document.getElementById("wxOverlay");
+
+  /* ---------- 基础工具 ---------- */
+  function showToast(msg, duration) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    setTimeout(function () { toastEl.classList.remove("show"); }, duration || 1800);
+  }
+  function showLoading() { loadingEl.classList.add("show"); }
+  function hideLoading() { loadingEl.classList.remove("show"); }
+
+  function esc(s) {
+    if (s === null || s === undefined) return "";
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function isInWeChat() {
+    return /MicroMessenger/i.test(navigator.userAgent);
+  }
+  function v(s){ return (s||'').toString().trim() || '—'; }
+  function fmtDate(s){ return s ? s.replace('-','/') : ''; }
+  function fmtRange(a,b){ return (fmtDate(a)||'至')+' — '+(fmtDate(b)||'至今'); }
+
+  /* ---------- 校验 ---------- */
+  function validate() {
+    var ok = true;
+    var fields = form.querySelectorAll(".field");
+    fields.forEach(function (f) { f.classList.remove("invalid"); });
+    // 清除多条目字段的红框标记
+    var prevInvalid = form.querySelectorAll('.input-invalid');
+    prevInvalid.forEach(function (el) { el.classList.remove('input-invalid'); });
+    // 清除多条目整体红框标记
+    var prevEntryInvalid = form.querySelectorAll('.entry-invalid');
+    prevEntryInvalid.forEach(function (el) { el.classList.remove('entry-invalid'); });
+
+    var name = form.name;
+    if (!name.value.trim()) { name.closest(".field").classList.add("invalid"); ok = false; }
+    var birth = form.birth;
+    if (!birth.value.trim()) { birth.closest(".field").classList.add("invalid"); ok = false; }
+    var nativePlace = form.nativePlace;
+    if (!nativePlace.value.trim()) { nativePlace.closest(".field").classList.add("invalid"); ok = false; }
+    var currentAddress = form.currentAddress;
+    if (!currentAddress.value.trim()) { currentAddress.closest(".field").classList.add("invalid"); ok = false; }
+
+    var phone = form.phone;
+    if (!/^1[3-9]\d{9}$/.test(phone.value.trim())) { phone.closest(".field").classList.add("invalid"); ok = false; }
+    var email = form.email;
+    if (email.value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) {
+      email.closest(".field").classList.add("invalid"); ok = false;
+    }
+    var education = form.education;
+    if (!education.value.trim()) { education.closest(".field").classList.add("invalid"); ok = false; }
+    var hasRelative = form.hasRelative;
+    if (!hasRelative.value.trim()) { hasRelative.closest(".field").classList.add("invalid"); ok = false; }
+    // 亲属关系选"有"时，姓名及部门必填
+    var relativeDetail = form.relativeDetail;
+    if (hasRelative.value === '有' && !relativeDetail.value.trim()) {
+      relativeDetail.closest(".field").classList.add("invalid"); ok = false;
+    }
+    // 招聘渠道为内部推荐时，推荐人姓名必填
+    var referrerName = form.referrerName;
+    if (form.channel.value === '内部推荐' && !referrerName.value.trim()) {
+      referrerName.closest(".field").classList.add("invalid"); ok = false;
+    }
+    var signature = form.signature;
+    if (!signature.value.trim()) { signature.closest(".field").classList.add("invalid"); ok = false; }
+    var signDate = form.signDate;
+    if (!signDate.value.trim()) { signDate.closest(".field").classList.add("invalid"); ok = false; }
+
+    // 身高
+    var height = form.height;
+    if (!height.value.trim()) { height.closest(".field").classList.add("invalid"); ok = false; }
+    // 紧急联系人姓名
+    var emergencyName = form.emergencyName;
+    if (!emergencyName.value.trim()) { emergencyName.closest(".field").classList.add("invalid"); ok = false; }
+    // 紧急联系人关系
+    var emergencyRelation = form.emergencyRelation;
+    if (!emergencyRelation.value.trim()) { emergencyRelation.closest(".field").classList.add("invalid"); ok = false; }
+    // 紧急联系人电话
+    var emergencyPhone = form.emergencyPhone;
+    if (!/^1[3-9]\d{9}$/.test(emergencyPhone.value.trim())) { emergencyPhone.closest(".field").classList.add("invalid"); ok = false; }
+    // 招聘渠道
+    var channel = form.channel;
+    if (!channel.value.trim()) { channel.closest(".field").classList.add("invalid"); ok = false; }
+
+    // 多条目必填：至少一条非空记录
+    if (!hasNonEmptyEntry('edu')) { markEntrySectionInvalid('eduEntries'); ok = false; }
+    if (!hasNonEmptyEntry('work')) { markEntrySectionInvalid('workEntries'); ok = false; }
+
+    // 教育经历：每条记录的学校、学历必填
+    var eduWrap = document.getElementById('eduEntries');
+    var eduEntries = eduWrap.querySelectorAll('.entry');
+    for (var ei = 0; ei < eduEntries.length; ei++) {
+      var eduSchool = eduEntries[ei].querySelector('[name="eduSchool"]');
+      var eduDegree = eduEntries[ei].querySelector('[name="eduDegree"]');
+      // 仅当该条目有任意内容时才校验学校、学历
+      var hasAny = false;
+      var allInputs = eduEntries[ei].querySelectorAll('input, select, textarea');
+      for (var ai = 0; ai < allInputs.length; ai++) {
+        if (allInputs[ai].value.trim()) { hasAny = true; break; }
+      }
+      if (hasAny) {
+        if (eduSchool && !eduSchool.value.trim()) { eduSchool.classList.add('input-invalid'); ok = false; }
+        if (eduDegree && !eduDegree.value.trim()) { eduDegree.classList.add('input-invalid'); ok = false; }
+      }
+    }
+
+    return ok;
+  }
+  function hasNonEmptyEntry(type) {
+    var wrap = document.getElementById(type + 'Entries');
+    var entries = wrap.querySelectorAll('.entry');
+    for (var i = 0; i < entries.length; i++) {
+      var inputs = entries[i].querySelectorAll('input, select, textarea');
+      for (var j = 0; j < inputs.length; j++) {
+        if (inputs[j].value.trim()) return true;
+      }
+    }
+    return false;
+  }
+  function markEntrySectionInvalid(entryId) {
+    var wrap = document.getElementById(entryId);
+    if (!wrap) return;
+    var entry = wrap.querySelector('.entry');
+    if (entry) entry.classList.add('entry-invalid');
+    // 3 秒后自动移除提示
+    setTimeout(function(){
+      var e = wrap.querySelector('.entry-invalid');
+      if (e) e.classList.remove('entry-invalid');
+    }, 3000);
+  }
+
+  // 自动定位到第一个校验失败的必填项：平滑滚动 + 聚焦弹键盘
+  function focusFirstInvalid() {
+    var el = null, container = null;
+    // 优先级：普通必填字段 → 多条目内字段 → 多条目整体
+    var field = form.querySelector('.field.invalid');
+    if (field) {
+      container = field;
+      el = field.querySelector('input, select, textarea');
+    }
+    if (!container) {
+      el = form.querySelector('.input-invalid');
+      if (el) container = el.closest('.field') || el.closest('.entry');
+    }
+    if (!container) {
+      container = form.querySelector('.entry-invalid');
+      if (container) el = container.querySelector('input, select, textarea');
+    }
+    if (!container) return;
+    // 平滑滚动到视口中央（考虑底部固定操作栏遮挡）
+    try {
+      container.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch(e) {
+      container.scrollIntoView();
+    }
+    // 滚动动画结束后聚焦，手机端直接弹键盘开始填写
+    if (el && el.focus) {
+      setTimeout(function(){ try { el.focus(); } catch(e){} }, 500);
+    }
+  }
+
+  /* ---------- 收集数据 ---------- */
+  function collect() {
+    var data = {};
+    var els = form.elements;
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      if (!el.name) continue;
+      if (el.type === "radio") {
+        if (el.checked) data[el.name] = el.value;
+      } else if (el.type === "checkbox") {
+        if (!data[el.name]) data[el.name] = [];
+        if (el.checked) data[el.name].push(el.value);
+      } else {
+        data[el.name] = el.value.trim();
+      }
+    }
+    // 多条目
+    data.edu = collectEntries('edu', [
+      ['eduStart','start'],['eduEnd','end'],['eduSchool','school'],
+      ['eduMajor','major'],['eduDegree','degree']
+    ]);
+    data.work = collectEntries('work', [
+      ['wkStart','start'],['wkEnd','end'],['wkCompany','company'],
+      ['wkPos','pos'],['wkSalary','salary'],['wkReason','reason'],['wkDesc','desc']
+    ]);
+    data.proj = collectEntries('proj', [
+      ['pjStart','start'],['pjEnd','end'],['pjName','name'],
+      ['pjRole','role'],['pjDesc','desc']
+    ]);
+    data.signature = (form.signature||{}).value || '';
+    data.signDate = (form.signDate||{}).value || '';
+    return data;
+  }
+  function collectEntries(type, fields) {
+    var wrap = document.getElementById(type + 'Entries');
+    return Array.from(wrap.querySelectorAll('.entry')).map(function(e){
+      var o = {};
+      fields.forEach(function(f){
+        var el = e.querySelector('[name="' + f[0] + '"]');
+        o[f[1]] = el ? el.value.trim() : '';
+      });
+      return o;
+    }).filter(function(o){ return Object.values(o).some(function(v){return v;}); });
+  }
+
+  /* ========================================================================
+     微信场景：把简历渲染成图片，长按保存到相册（微信内闭环）
+     长按保存是微信 WebView 对 <img> 的原生支持，iOS/Android 均可靠
+     ======================================================================== */
+  function showWxImageOverlay(canvases) {
+    var wrap = document.getElementById('wxImageWrap');
+    var overlay = document.getElementById('wxImgOverlay');
+    if (!wrap || !overlay) return;
+    wrap.innerHTML = '';
+    canvases.forEach(function(c, i){
+      // canvas 必须转成 img 才能长按保存（canvas 元素长按无效）
+      var dataUrl = c.toDataURL('image/jpeg', 0.92);
+      var img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.cssText = 'width:100%;display:block;border:1px solid #e2e8f0;border-radius:6px;' + (i > 0 ? 'margin-top:8px;' : '');
+      img.setAttribute('alt', '简历第' + (i+1) + '页');
+      wrap.appendChild(img);
+    });
+    // 多页时提示页数
+    if (canvases.length > 1) {
+      var tip = document.createElement('p');
+      tip.style.cssText = 'text-align:center;color:#94a3b8;font-size:11px;margin:8px 0 0;';
+      tip.textContent = '共 ' + canvases.length + ' 页，请逐张长按保存';
+      wrap.appendChild(tip);
+    }
+    overlay.classList.add("show");
+  }
+
+  /* ========================================================================
+     微信 → 浏览器 数据传递：把已填数据压缩进 URL hash
+     微信"在浏览器中打开"会携带当前完整 URL（含 hash），
+     浏览器加载页面时从 hash 恢复数据，无需重新填写
+     ======================================================================== */
+  // 精简数据：剔除空字段，大幅缩短 hash（微信跳浏览器 URL 有长度限制，超长会被截断）
+  function slimData(d) {
+    var out = {};
+    for (var k in d) {
+      if (!Object.prototype.hasOwnProperty.call(d, k)) continue;
+      var v = d[k];
+      if (Array.isArray(v)) {
+        var arr = v.filter(function(item){
+          return item && Object.keys(item).some(function(ik){ return item[ik]; });
+        });
+        if (arr.length) out[k] = arr;
+      } else if (typeof v === 'string' && v.trim()) {
+        out[k] = v.trim();
+      }
+    }
+    return out;
+  }
+  function encodeDataToHash(data) {
+    try {
+      return LZString.compressToEncodedURIComponent(JSON.stringify(slimData(data)));
+    } catch (e) { return ''; }
+  }
+  // 数据放 URL query（微信"在浏览器中打开"对 query 一定保留，对 hash 可能丢弃）
+  function buildDataUrl(compressed) {
+    var base = location.pathname + location.search;
+    // 移除已有 d 参数
+    base = base.replace(/([?&])d=[^&]*/g, function(m, p1){ return p1 === '?' ? '?' : ''; });
+    base = base.replace(/[?&]$/, '');
+    var sep = base.indexOf('?') > -1 ? '&' : '?';
+    return base + sep + 'd=' + compressed;
+  }
+  function decodeDataFromUrl() {
+    try {
+      // 优先从 query 读取
+      var m = location.search.match(/[?&]d=([^&]*)/);
+      var compressed = m ? m[1] : '';
+      // 兼容旧 hash 方式
+      if (!compressed) {
+        var h = location.hash || '';
+        if (h.indexOf('#d=') === 0) compressed = h.substring(3);
+      }
+      if (compressed) {
+        var json = LZString.decompressFromEncodedURIComponent(compressed);
+        if (json) return JSON.parse(json);
+      }
+    } catch (e) {}
+    return null;
+  }
+  // URL 中是否带有数据参数（用于截断检测）
+  function hasDataParam() {
+    return /[?&]d=/.test(location.search) || (location.hash || '').indexOf('#d=') === 0;
+  }
+  // 清除 URL 中的数据参数（保留其他 query）
+  function cleanDataParam() {
+    try {
+      var base = location.pathname + location.search;
+      base = base.replace(/([?&])d=[^&]*/g, function(m, p1){ return p1 === '?' ? '?' : ''; });
+      base = base.replace(/[?&]$/, '');
+      history.replaceState(null, '', base);
+    } catch(e) {}
+  }
+  var hashSyncTimer = null;
+  function syncUrlData(immediate) {
+    // 仅微信中需要（浏览器里 localStorage 草稿已够用，避免 URL 过长）
+    if (!isInWeChat()) return;
+    if (immediate) {
+      if (hashSyncTimer) { clearTimeout(hashSyncTimer); hashSyncTimer = null; }
+      try {
+        var c = encodeDataToHash(collect());
+        if (c) history.replaceState(null, '', buildDataUrl(c));
+      } catch (e) {}
+      return;
+    }
+    if (hashSyncTimer) clearTimeout(hashSyncTimer);
+    hashSyncTimer = setTimeout(function(){
+      try {
+        var compressed = encodeDataToHash(collect());
+        if (compressed) {
+          history.replaceState(null, '', buildDataUrl(compressed));
+        }
+      } catch (e) {}
+    }, 400);
+  }
+  // 把草稿数据应用到表单（含多条目、亲属联动）
+  // 把数据完整应用到表单
+  // 关键：必须先清空所有字段，再写入。否则精简数据中被剔除的空字段
+  // 会保留浏览器本地旧草稿的残留值，导致两端内容不一致
+  function applyDraft(d) {
+    var els = form.elements;
+    var i, el;
+    // 第一步：清空/复位所有字段
+    for (i = 0; i < els.length; i++) {
+      el = els[i];
+      if (!el.name) continue;
+      if (el.type === "radio" || el.type === "checkbox") {
+        el.checked = false;
+      } else {
+        el.value = "";
+      }
+    }
+    // 第二步：写入数据（缺失即代表空值，已在上一步清空）
+    for (i = 0; i < els.length; i++) {
+      el = els[i];
+      if (!el.name) continue;
+      var v = d[el.name];
+      if (v === undefined || v === null) continue;
+      if (el.type === "radio") {
+        if (el.value === v) el.checked = true;
+      } else if (el.type === "checkbox") {
+        var arr = Array.isArray(v) ? v : String(v).split("、").filter(Boolean);
+        el.checked = arr.indexOf(el.value) > -1;
+      } else {
+        el.value = v;
+      }
+    }
+    restoreEntries('edu', d.edu || []);
+    restoreEntries('work', d.work || []);
+    restoreEntries('proj', d.proj || []);
+    // 亲属联动显示状态
+    document.getElementById('relativeDetailWrap').style.display =
+      (d.hasRelative === '有') ? 'block' : 'none';
+    // 内部推荐联动显示状态
+    document.getElementById('referrerWrap').style.display =
+      (d.channel === '内部推荐') ? 'block' : 'none';
+  }
+
+  /* ========================================================================
+     下载工具：跨平台兼容（iOS Safari / Android Chrome / 鸿蒙浏览器）
+     ======================================================================== */
+  function downloadBlob(blob, filename) {
+    if (isInWeChat()) {
+      wxOverlay.classList.add("show");
+      return false;
+    }
+    try {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.rel = "noopener";
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 1500);
+      return true;
+    } catch (e) {
+      try {
+        var reader = new FileReader();
+        reader.onload = function () {
+          var a2 = document.createElement("a");
+          a2.href = reader.result;
+          a2.download = filename;
+          a2.style.display = "none";
+          document.body.appendChild(a2);
+          a2.click();
+          setTimeout(function () { document.body.removeChild(a2); }, 1500);
+        };
+        reader.readAsDataURL(blob);
+        return true;
+      } catch (e2) {
+        showToast("下载失败，请长按页面保存");
+        return false;
+      }
+    }
+  }
+
+  /* ========================================================================
+     Word 导出：纯原生 HTML-to-DOC，零依赖
+     ======================================================================== */
+  function buildResumeHTML(d) {
+    function row(label, val) {
+      if (!val) return "";
+      return '<tr><td class="lbl">' + esc(label) + '</td><td>' + esc(val) + '</td></tr>';
+    }
+    function rowMulti(label, val) {
+      if (!val) return "";
+      return '<tr><td class="lbl">' + esc(label) + '</td><td class="multi">' + esc(val).replace(/\n/g, "<br/>") + '</td></tr>';
+    }
+    function entriesBlock(title, list, formatter) {
+      if (!list || !list.length) return "";
+      var inner = list.map(formatter).join('<tr><td colspan="2" class="gap"></td></tr>');
+      return '<tr><td colspan="2" class="sect">' + esc(title) + '</td></tr>' + inner;
+    }
+
+    var rows =
+      row("姓名", d.name) + row("性别", d.gender) + row("出生年月", d.birth) +
+      row("身高", d.height ? d.height + " cm" : "") + row("体重", d.weight ? d.weight + " kg" : "") +
+      row("婚姻状态", d.marital) + row("政治面貌", d.political) + row("籍贯", d.nativePlace) + row("现居地", d.currentAddress) +
+      row("手机号码", d.phone) + row("电子邮箱", d.email) +
+      row("紧急联系人姓名", d.emergencyName) + row("紧急联系人关系", d.emergencyRelation) +
+      row("紧急联系人电话", d.emergencyPhone) +
+      row("最高学历", d.education) + row("工作年限", d.expYears) +
+      row("期望岗位", d.position) + row("期望薪资", d.salary) + row("招聘渠道", d.channel) +
+      (d.channel === '内部推荐' ? row("推荐人姓名", d.referrerName) : "") +
+      row("有无直系亲属或利害关系人在本公司任职", d.hasRelative) +
+      (d.hasRelative === '有' ? row("姓名及部门", d.relativeDetail) : "");
+
+    var eduBlock = entriesBlock("教育经历", d.edu, function(e){
+      return row("时间", fmtRange(e.start, e.end)) + row("学校", e.school) +
+             row("专业", e.major) + row("学历", e.degree);
+    });
+    var workBlock = entriesBlock("工作经历", d.work, function(e){
+      return row("时间", fmtRange(e.start, e.end)) + row("公司", e.company) +
+             row("职位", e.pos) + row("月薪", e.salary) + row("离职原因", e.reason) +
+             rowMulti("工作内容", e.desc);
+    });
+    var projBlock = entriesBlock("项目经历", d.proj, function(e){
+      return row("时间", fmtRange(e.start, e.end)) + row("项目名称", e.name) +
+             row("担任角色", e.role) + rowMulti("项目描述", e.desc);
+    });
+
+    var otherRows =
+      rowMulti("专业技能", d.skills) + row("语言能力", d.language) +
+      row("证书与荣誉", d.certs) + row("兴趣爱好", d.hobby) + rowMulti("自我评价", d.selfEval);
+
+    var commitmentRows =
+      '<tr><td colspan="2" class="sect">信息真实性承诺与授权</td></tr>'
+      + '<tr><td colspan="2" class="multi" style="background:#f8fafc;line-height:1.85;">'
+      + '本人郑重承诺：<br/><br/>'
+      + '本人确认本表所载各项信息均真实、准确、完整，不存在不实陈述或重大遗漏。<br/><br/>'
+      + '本人同意授权本公司及本公司合作的第三方背景调查机构，对本人的任职履历、学历资质、无犯罪记录等信息进行核实（核实前将另行单独取得本人书面授权）。<br/><br/>'
+      + '本人承诺入职时按要求提供真实有效的证件及证明文件。<br/><br/>'
+      + '如经核实存在虚假信息，本人理解并接受公司可据此不予录用或解除劳动关系，且无须支付任何经济补偿。'
+      + '</td></tr>'
+      + row("申请人签名", d.signature) + row("签署日期", d.signDate);
+
+    return '<div class="page"><h1>个人简历</h1><div class="meta">填写日期：' + todayStr() + '</div>'
+      + '<table>' + rows + eduBlock + workBlock + projBlock +
+      '<tr><td colspan="2" class="sect">技能与其他</td></tr>' + otherRows +
+      commitmentRows +
+      '</table><div class="footer">本简历由候选人信息登记表生成</div></div>';
+  }
+
+  function exportWord() {
+    if (!validate()) { showToast("请先完善带 * 的必填项"); focusFirstInvalid(); return; }
+    var d = collect();
+    // 微信内闭环：渲染成一张长图，长按保存到相册
+    if (isInWeChat()) {
+      var btnLabel = "导出图片";
+      btnWord.disabled = true;
+      btnWord.textContent = "生成中...";
+      showLoading();
+      setTimeout(function(){
+        try {
+          var canvases = renderResumeToCanvases(d, true);
+          showWxImageOverlay(canvases);
+          showToast("长按图片即可保存到相册");
+        } catch(e) {
+          showToast("生成失败，请重试");
+          console.error(e);
+        } finally {
+          btnWord.disabled = false;
+          btnWord.textContent = btnLabel;
+          hideLoading();
+        }
+      }, 50);
+      return;
+    }
+    var content = buildResumeHTML(d);
+    var html =
+      '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
+      + '<head><meta charset="utf-8"><title>个人简历</title>'
+      + '<style>'
+      + '@page{size:A4;margin:1.5cm 1.8cm;}'
+      + 'body{font-family:"PingFang SC","Microsoft YaHei",SimSun,Arial,sans-serif;color:#0f172a;margin:0;padding:0;background:#fff;}'
+      + '.page{width:100%;margin:0 auto;}'
+      + 'h1{font-size:22px;text-align:center;margin:0 0 4px;color:#1c1917;letter-spacing:2px;}'
+      + '.meta{text-align:center;color:#64748b;font-size:12px;margin-bottom:14px;}'
+      + 'table{width:100%;border-collapse:collapse;font-size:11pt;}'
+      + 'td{border:1px solid #94a3b8;padding:6px 10px;vertical-align:top;line-height:1.6;}'
+      + 'td.lbl{width:130px;background:#f5f5f4;font-weight:600;color:#44403c;text-align:right;}'
+      + 'td.multi{line-height:1.7;white-space:pre-wrap;}'
+      + 'td.sect{background:#1f2937;color:#fff;font-weight:700;padding:6px 12px;font-size:12pt;letter-spacing:1px;border-left:3px solid #9ca3af;}'
+      + 'td.gap{border:none;height:6px;padding:0;background:#fff;}'
+      + '.footer{margin-top:14px;text-align:center;color:#94a3b8;font-size:10px;}'
+      + '</style></head><body>' + content + '</body></html>';
+
+    var blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
+    var ok = downloadBlob(blob, (d.name || "候选人") + "_简历.doc");
+    if (ok) showToast("Word 简历已生成");
+  }
+
+  /* ========================================================================
+     PDF 导出：纯原生实现（Canvas 绘制 + 手工构造 PDF 二进制）
+     ======================================================================== */
+  function renderResumeToCanvases(data, singleImage) {
+    var A4_W = 595, A4_H = 842;
+    var MARGIN = 40;
+    // 长图模式用 1.5 倍清晰度（控制 canvas 像素面积，兼容 iOS 老设备）
+    var SCALE = singleImage ? 1.5 : 2;
+    var MAX_CANVAS_H = singleImage ? A4_H * 9 : A4_H; // 长图最大 9 页内容量
+    var CONTENT_W = A4_W - MARGIN * 2;
+    var LABEL_W = 100;     // 左侧标签列宽
+    var VAL_W = CONTENT_W - LABEL_W;  // 右侧值列宽
+    var ROW_PAD = 5;       // 单元格上下内边距
+    var ROW_MIN_H = 22;    // 单行最小高度
+
+    var pages = [];
+    var canvas, ctx, y;
+
+    function initCanvas(h) {
+      canvas = document.createElement("canvas");
+      canvas.width = A4_W * SCALE;
+      canvas.height = h * SCALE;
+      ctx = canvas.getContext("2d");
+      ctx.scale(SCALE, SCALE);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, A4_W, h);
+      y = MARGIN;
+    }
+    function newPage() {
+      if (singleImage) {
+        // 长图模式：不分页，内容连续往下画
+        if (!canvas) initCanvas(MAX_CANVAS_H);
+        return;
+      }
+      if (canvas) pages.push(canvas);
+      initCanvas(A4_H);
+    }
+    function ensureSpace(h) {
+      if (singleImage) return; // 长图模式：不检查空间
+      if (y + h > A4_H - MARGIN - 10) newPage();
+    }
+    function setFont(size, weight) {
+      ctx.font = (weight || "normal") + " " + size + 'px "PingFang SC","Microsoft YaHei","Heiti SC","Noto Sans CJK SC",sans-serif';
+    }
+    function wrapText(text, maxWidth, size, weight) {
+      setFont(size, weight);
+      var lines = [];
+      var paragraphs = String(text).split("\n");
+      for (var p = 0; p < paragraphs.length; p++) {
+        var para = paragraphs[p];
+        if (para === "") { lines.push(""); continue; }
+        var chars = para.split("");
+        var line = "";
+        for (var i = 0; i < chars.length; i++) {
+          var testLine = line + chars[i];
+          if (ctx.measureText(testLine).width > maxWidth && line) {
+            lines.push(line);
+            line = chars[i];
+          } else {
+            line = testLine;
+          }
+        }
+        lines.push(line);
+      }
+      return lines;
+    }
+
+    // 画一条横线（单元格底边）
+    function hline(x1, x2, yPos, color, width) {
+      ctx.strokeStyle = color || "#94a3b8";
+      ctx.lineWidth = width || 0.6;
+      ctx.beginPath();
+      ctx.moveTo(x1, yPos);
+      ctx.lineTo(x2, yPos);
+      ctx.stroke();
+    }
+    // 画一条竖线
+    function vline(xPos, y1, y2, color, width) {
+      ctx.strokeStyle = color || "#94a3b8";
+      ctx.lineWidth = width || 0.6;
+      ctx.beginPath();
+      ctx.moveTo(xPos, y1);
+      ctx.lineTo(xPos, y2);
+      ctx.stroke();
+    }
+
+    // 章节标题行（蓝色背景条，跨整行）
+    function drawSection(title) {
+      var h = 22;
+      ensureSpace(h + 4);
+      y += 4;
+      // 墨黑背景
+      ctx.fillStyle = "#1f2937";
+      ctx.fillRect(MARGIN, y, CONTENT_W, h);
+      // 左侧装饰条
+      ctx.fillStyle = "#9ca3af";
+      ctx.fillRect(MARGIN, y, 3, h);
+      // 文字
+      setFont(11, "bold");
+      ctx.fillStyle = "#ffffff";
+      ctx.textBaseline = "middle";
+      ctx.fillText(title, MARGIN + 10, y + h / 2 + 1);
+      ctx.textBaseline = "alphabetic";
+      y += h;
+    }
+
+    // 单行 KV 表格行（左标签底色 + 右值）
+    // 标签超宽时自动换行，行高按标签/值行数取最大，避免文字重叠
+    function drawRow(label, value) {
+      var valStr = (value || '').toString();
+      var fontSize = 9.5;
+      // 值行数
+      var lines = valStr ? wrapText(valStr, VAL_W - 14, fontSize, "normal") : [''];
+      // 标签行数（标签列内自动换行）
+      var labelLines = wrapText(String(label), LABEL_W - 14, fontSize, "bold");
+      var rowH = Math.max(ROW_MIN_H,
+        Math.max(lines.length, labelLines.length) * (fontSize + 5) + ROW_PAD * 2);
+      ensureSpace(rowH);
+      var rowTop = y;
+      var rowBottom = y + rowH;
+      // 标签格背景（浅米灰）
+      ctx.fillStyle = "#f5f5f4";
+      ctx.fillRect(MARGIN, rowTop, LABEL_W, rowH);
+      // 标签文字（多行，垂直居中）
+      setFont(fontSize, "bold");
+      ctx.fillStyle = "#44403c";
+      var labelLH = fontSize + 5;
+      var labelBlockH = labelLines.length * labelLH;
+      var labelY = rowTop + (rowH - labelBlockH) / 2 + fontSize;
+      for (var li = 0; li < labelLines.length; li++) {
+        ctx.fillText(labelLines[li], MARGIN + 8, labelY + 1);
+        labelY += labelLH;
+      }
+      // 值文字（多行，垂直居中）
+      setFont(fontSize, "normal");
+      ctx.fillStyle = "#1c1917";
+      var valLH = fontSize + 5;
+      var valBlockH = lines.length * valLH;
+      var textY = rowTop + (rowH - valBlockH) / 2 + fontSize;
+      for (var i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], MARGIN + LABEL_W + 8, textY + 1);
+        textY += valLH;
+      }
+      // 边框
+      hline(MARGIN, MARGIN + CONTENT_W, rowBottom);
+      vline(MARGIN, rowTop, rowBottom);
+      vline(MARGIN + LABEL_W, rowTop, rowBottom);
+      vline(MARGIN + CONTENT_W, rowTop, rowBottom);
+      y = rowBottom;
+    }
+
+    // 多条目：每个条目用一行紧凑标题 + 若干 KV 行
+    function drawEntryTitle(title, right) {
+      var h = 20;
+      ensureSpace(h);
+      var rowTop = y;
+      var rowBottom = y + h;
+      // 浅米灰背景
+      ctx.fillStyle = "#f5f5f4";
+      ctx.fillRect(MARGIN, rowTop, CONTENT_W, h);
+      // 标题
+      setFont(10, "bold");
+      ctx.fillStyle = "#1c1917";
+      ctx.textBaseline = "middle";
+      ctx.fillText(title, MARGIN + 8, rowTop + h / 2 + 1);
+      // 右侧时间
+      if (right) {
+        setFont(9, "normal");
+        ctx.fillStyle = "#78716c";
+        var tw = ctx.measureText(right).width;
+        ctx.fillText(right, MARGIN + CONTENT_W - tw - 8, rowTop + h / 2 + 1);
+      }
+      ctx.textBaseline = "alphabetic";
+      hline(MARGIN, MARGIN + CONTENT_W, rowBottom);
+      vline(MARGIN, rowTop, rowBottom);
+      vline(MARGIN + CONTENT_W, rowTop, rowBottom);
+      y = rowBottom;
+    }
+
+    newPage();
+
+    // === 标题区 ===
+    ctx.textAlign = "center";
+    setFont(18, "bold");
+    ctx.fillStyle = "#1c1917";
+    ctx.fillText("个人简历", A4_W / 2, y + 18);
+    y += 24;
+    // 副标题下划线
+    ctx.strokeStyle = "#9ca3af";
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(A4_W/2 - 60, y);
+    ctx.lineTo(A4_W/2 + 60, y);
+    ctx.stroke();
+    y += 6;
+    setFont(9, "normal");
+    ctx.fillStyle = "#78716c";
+    ctx.fillText("填写日期：" + todayStr(), A4_W / 2, y + 9);
+    y += 16;
+    ctx.textAlign = "left";
+
+    // 表格起点 X
+    var TBL_X = MARGIN;
+    var TBL_R = MARGIN + CONTENT_W;
+
+    // 基本信息
+    drawSection("一、基本信息");
+    drawRow("姓名", data.name);
+    drawRow("性别", data.gender);
+    drawRow("出生年月", data.birth);
+    drawRow("身高", data.height ? data.height + " cm" : "");
+    drawRow("体重", data.weight ? data.weight + " kg" : "");
+    drawRow("婚姻状态", data.marital);
+    drawRow("政治面貌", data.political);
+    drawRow("籍贯", data.nativePlace);
+    drawRow("现居地", data.currentAddress);
+
+    // 联系方式
+    drawSection("二、联系方式");
+    drawRow("手机号码", data.phone);
+    drawRow("电子邮箱", data.email);
+    drawRow("紧急联系人姓名", data.emergencyName);
+    drawRow("紧急联系人关系", data.emergencyRelation);
+    drawRow("紧急联系人电话", data.emergencyPhone);
+
+    // 教育与求职
+    drawSection("三、教育与求职");
+    drawRow("最高学历", data.education);
+    drawRow("工作年限", data.expYears ? data.expYears + " 年" : "");
+    drawRow("期望岗位", data.position);
+    drawRow("期望薪资", data.salary);
+    drawRow("招聘渠道", data.channel);
+    if (data.channel === '内部推荐') drawRow("推荐人姓名", data.referrerName);
+
+    // 教育经历
+    drawSection("四、教育经历");
+    if (data.edu && data.edu.length) {
+      data.edu.forEach(function(e){
+        drawEntryTitle((e.school || '—') + ' — ' + (e.major || '—') + '（' + (e.degree || '—') + '）', fmtRange(e.start, e.end));
+      });
+    } else {
+      drawRow("（无记录）", "");
+    }
+
+    // 工作经历
+    drawSection("五、工作经历");
+    if (data.work && data.work.length) {
+      data.work.forEach(function(e){
+        drawEntryTitle((e.company || '—') + ' — ' + (e.pos || '—'), fmtRange(e.start, e.end));
+        if (e.salary) drawRow("月薪", e.salary);
+        if (e.reason) drawRow("离职原因", e.reason);
+        if (e.desc) drawRow("工作内容", e.desc);
+      });
+    } else {
+      drawRow("（无记录）", "");
+    }
+
+    // 项目经历
+    drawSection("六、项目经历");
+    if (data.proj && data.proj.length) {
+      data.proj.forEach(function(e){
+        drawEntryTitle((e.name || '—') + ' — ' + (e.role || '—'), fmtRange(e.start, e.end));
+        if (e.desc) drawRow("项目描述", e.desc);
+      });
+    } else {
+      drawRow("（无记录）", "");
+    }
+
+    // 技能与其他
+    drawSection("七、技能与其他");
+    drawRow("专业技能", data.skills);
+    drawRow("语言能力", data.language);
+    drawRow("证书与荣誉", data.certs);
+    drawRow("兴趣爱好", data.hobby);
+    drawRow("自我评价", data.selfEval);
+
+    // 亲属关系
+    drawSection("八、亲属关系声明");
+    drawRow("有无直系亲属/利害关系人在公司任职", data.hasRelative);
+    if (data.hasRelative === '有') drawRow("姓名及部门", data.relativeDetail);
+
+    // 信息真实性承诺
+    drawSection("九、信息真实性承诺与授权");
+    drawRow("承诺事项", "本人郑重承诺：\n\n本人确认本表所载各项信息均真实、准确、完整，不存在不实陈述或重大遗漏。\n\n本人同意授权本公司及本公司合作的第三方背景调查机构，对本人的任职履历、学历资质、无犯罪记录等信息进行核实（核实前将另行单独取得本人书面授权）。\n\n本人承诺入职时按要求提供真实有效的证件及证明文件。\n\n如经核实存在虚假信息，本人理解并接受公司可据此不予录用或解除劳动关系，且无须支付任何经济补偿。");
+    drawRow("申请人签名", data.signature);
+    drawRow("签署日期", data.signDate);
+
+    // 顶部封口线（最后补画表格顶部边框，每页都补）
+    // 由于已经逐行画了底边和左右边，这里补顶部线
+    // （首行已由 drawSection 自然衔接，无需额外处理）
+
+    // 页脚
+    y += 8;
+    ctx.textAlign = "center";
+    setFont(8, "normal");
+    ctx.fillStyle = "#cbd5e1";
+    // 长图模式页脚跟随实际内容底部；分页模式限制在页底
+    ctx.fillText("本简历由候选人信息登记表生成", A4_W / 2,
+      singleImage ? y + 8 : Math.min(y + 8, A4_H - MARGIN / 2));
+    ctx.textAlign = "left";
+
+    if (singleImage) {
+      // 裁剪到实际内容高度，生成一张连续长图
+      var actualH = Math.min(Math.ceil(y + 16), MAX_CANVAS_H);
+      var cropped = document.createElement("canvas");
+      cropped.width = canvas.width;
+      cropped.height = actualH * SCALE;
+      cropped.getContext('2d').drawImage(
+        canvas, 0, 0, canvas.width, actualH * SCALE,
+        0, 0, canvas.width, actualH * SCALE
+      );
+      pages.push(cropped);
+    } else {
+      pages.push(canvas);
+    }
+    return pages;
+  }
+
+  function canvasToJPEG(canvas) {
+    var dataURI = canvas.toDataURL("image/jpeg", 0.92);
+    var base64 = dataURI.split(",")[1];
+    var binary = atob(base64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  function buildPDF(images) {
+    var encoder = new TextEncoder();
+    var chunks = [];
+    var offsets = {};
+    var pos = 0;
+    function addStr(s) { var bytes = encoder.encode(s); chunks.push(bytes); pos += bytes.length; }
+    function addBytes(bytes) { chunks.push(bytes); pos += bytes.length; }
+
+    addStr("%PDF-1.4\n");
+    addBytes(new Uint8Array([0x25, 0xE2, 0xE3, 0xCF, 0xD3, 0x0A]));
+
+    var A4_W = 595, A4_H = 842;
+    var numImgs = images.length;
+    var totalObjs = 2 + 3 * numImgs;
+
+    offsets[1] = pos;
+    addStr("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+    offsets[2] = pos;
+    var kids = "";
+    for (var i = 0; i < numImgs; i++) kids += (5 + 3 * i) + " 0 R ";
+    addStr("2 0 obj\n<< /Type /Pages /Kids [" + kids + "] /Count " + numImgs + " >>\nendobj\n");
+
+    for (var i = 0; i < numImgs; i++) {
+      var img = images[i];
+      var imgNum = 3 + 3 * i;
+      var contentNum = 4 + 3 * i;
+      var pageNum = 5 + 3 * i;
+      var drawW = A4_W, drawH = A4_H;
+
+      offsets[imgNum] = pos;
+      addStr(imgNum + " 0 obj\n<< /Type /XObject /Subtype /Image /Width " + img.width
+        + " /Height " + img.height
+        + " /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " + img.jpeg.length
+        + " >>\nstream\n");
+      addBytes(img.jpeg);
+      addStr("\nendstream\nendobj\n");
+
+      var content = "q\n" + drawW + " 0 0 " + drawH + " 0 0 cm\n/Im" + i + " Do\nQ\n";
+      var contentBytes = encoder.encode(content);
+      offsets[contentNum] = pos;
+      addStr(contentNum + " 0 obj\n<< /Length " + contentBytes.length + " >>\nstream\n");
+      addBytes(contentBytes);
+      addStr("endstream\nendobj\n");
+
+      offsets[pageNum] = pos;
+      addStr(pageNum + " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 "
+        + A4_W + " " + A4_H + "] /Resources << /XObject << /Im" + i + " " + imgNum + " 0 R >> >> /Contents "
+        + contentNum + " 0 R >>\nendobj\n");
+    }
+
+    var xrefPos = pos;
+    addStr("xref\n0 " + (totalObjs + 1) + "\n");
+    addStr("0000000000 65535 f \n");
+    for (var n = 1; n <= totalObjs; n++) {
+      addStr(String(offsets[n] || 0).padStart(10, "0") + " 00000 n \n");
+    }
+    addStr("trailer\n<< /Size " + (totalObjs + 1) + " /Root 1 0 R >>\nstartxref\n" + xrefPos + "\n%%EOF\n");
+
+    var result = new Uint8Array(pos);
+    var p = 0;
+    for (var c = 0; c < chunks.length; c++) {
+      result.set(chunks[c], p);
+      p += chunks[c].length;
+    }
+    return result;
+  }
+
+  function exportPDF() {
+    if (!validate()) { showToast("请先完善带 * 的必填项"); focusFirstInvalid(); return; }
+
+    // 微信中：立即同步最新数据到 URL query（点右上角在浏览器打开时自动携带），引导跳浏览器
+    if (isInWeChat()) {
+      syncUrlData(true);
+      try {
+        var compressedNow = encodeDataToHash(collect());
+        // 数据过长时预警：微信跳浏览器可能截断 URL
+        if (compressedNow.length > 1800) {
+          showToast("内容较多，跳浏览器可能丢失部分内容，建议改用「导出图片」", 3500);
+        }
+      } catch (e) {}
+      wxOverlay.classList.add("show");
+      return;
+    }
+
+    var d = collect();
+    btnPdf.classList.add("processing");
+    btnPdf.disabled = true;
+    btnPdf.textContent = "生成中...";
+    showLoading();
+
+    setTimeout(function () {
+      try {
+        var canvases = renderResumeToCanvases(d);
+        var images = canvases.map(function (c) {
+          return { jpeg: canvasToJPEG(c), width: c.width, height: c.height };
+        });
+        var pdfBytes = buildPDF(images);
+        var blob = new Blob([pdfBytes], { type: "application/pdf" });
+        var ok = downloadBlob(blob, (d.name || "候选人") + "_简历.pdf");
+        if (ok) showToast("PDF 简历已生成");
+      } catch (e) {
+        showToast("生成失败，请重试");
+        console.error(e);
+      } finally {
+        btnPdf.classList.remove("processing");
+        btnPdf.disabled = false;
+        btnPdf.textContent = "导出 PDF";
+        hideLoading();
+      }
+    }, 50);
+  }
+
+  /* ---------- 草稿自动保存 ---------- */
+  function saveDraft() {
+    try {
+      var d = collect();
+      localStorage.setItem("candidate_draft_v2", JSON.stringify(d));
+    } catch (e) {}
+    // 微信中同步数据到 URL query（供"在浏览器中打开"时携带）
+    syncUrlData();
+  }
+  function loadDraft() {
+    try {
+      var raw = localStorage.getItem("candidate_draft_v2");
+      if (!raw) return;
+      applyDraft(JSON.parse(raw));
+    } catch (e) {}
+  }
+  function restoreEntries(type, list) {
+    var wrap = document.getElementById(type + 'Entries');
+    // 清空预填的一条
+    wrap.innerHTML = '';
+    if (!list.length) { addEntry(type); return; }
+    var fieldMap = {
+      edu: ['eduStart','eduEnd','eduSchool','eduMajor','eduDegree'],
+      work: ['wkStart','wkEnd','wkCompany','wkPos','wkSalary','wkReason','wkDesc'],
+      proj: ['pjStart','pjEnd','pjName','pjRole','pjDesc']
+    };
+    var keys = { edu:['start','end','school','major','degree'], work:['start','end','company','pos','salary','reason','desc'], proj:['start','end','name','role','desc'] };
+    list.forEach(function(item){
+      addEntry(type);
+      var entry = wrap.lastChild;
+      fieldMap[type].forEach(function(name, idx){
+        var el = entry.querySelector('[name="' + name + '"]');
+        if (el) el.value = item[keys[type][idx]] || '';
+      });
+    });
+  }
+
+  /* ---------- 绑定事件 ---------- */
+  btnWord.addEventListener("click", exportWord);
+  btnPdf.addEventListener("click", exportPDF);
+  document.getElementById("wxClose").addEventListener("click", function () {
+    wxOverlay.classList.remove("show");
+  });
+  document.getElementById("wxImgClose").addEventListener("click", function () {
+    document.getElementById("wxImgOverlay").classList.remove("show");
+  });
+  form.addEventListener("input", saveDraft);
+  form.addEventListener("change", saveDraft);
+  // 用户切走页面（点右上角菜单/切后台）时强制立即同步数据到 URL，
+  // 确保任何时刻"在浏览器中打开"都携带最新内容
+  document.addEventListener("visibilitychange", function(){
+    if (document.hidden) syncUrlData(true);
+  });
+  window.addEventListener("pagehide", function(){ syncUrlData(true); });
+
+  // 优先从 URL（query/hash）恢复数据（从微信"在浏览器中打开"跳转过来）
+  var hashData = decodeDataFromUrl();
+  if (hashData) {
+    try {
+      applyDraft(hashData);
+      // 同步保存到本地草稿，刷新也不丢
+      localStorage.setItem("candidate_draft_v2", JSON.stringify(hashData));
+      // 清除 URL 中的数据，避免分享链接时泄露隐私
+      cleanDataParam();
+      showToast("已恢复填写内容，可直接导出 PDF");
+    } catch (e) {
+      loadDraft();
+      showToast("内容恢复异常，请检查是否完整");
+    }
+  } else if (hasDataParam()) {
+    // URL 带数据参数但解码失败 → 链接被截断，数据不完整
+    loadDraft();
+    showToast("抱歉，填写内容未能完整带到浏览器（链接超长被截断）。请返回微信改用「导出图片」", 4000);
+  } else {
+    loadDraft();
+  }
+  // 默认签名日期为今天
+  if (!form.signDate.value) form.signDate.value = todayStr();
+})();
+</script>
+
+<script>
+/* ========================================================================
+   本地简历上传识别引擎（全部在浏览器内运行，无需外部程序/服务）
+   - PDF：内置 DEFLATE 解压 + 内容流文本提取 + ToUnicode 字符映射
+   - DOCX / XLSX：内置 ZIP 解包 + XML 文本提取
+   - DOC / XLS（旧版二进制）：UTF-16 / GBK 文本片段扫描（尽力识别）
+   - 图片 / 截图：按需加载 tesseract.js 做 OCR（同页面已有的 CDN 方式）
+   识别出的字段自动填入表单空白项
+   ======================================================================== */
+(function () {
+  "use strict";
+
+  var form = document.getElementById("resumeForm");
+  var fileInput = document.getElementById("resumeFile");
+  var btnUpload = document.getElementById("btnUpload");
+  var statusEl = document.getElementById("uploadStatus");
+  var resultEl = document.getElementById("uploadResult");
+
+  /* ---------- 小工具 ---------- */
+  function pad2(s) { return String(s).replace(/^(\d)$/, "0$1"); }
+  function u8ToLatin1(u8) {
+    var s = "", CH = 8192;
+    for (var i = 0; i < u8.length; i += CH) {
+      s += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + CH, u8.length)));
+    }
+    return s;
+  }
+  function decodeXmlEntities(s) {
+    if (!s) return "";
+    return String(s)
+      .replace(/&#x([0-9a-fA-F]+);/g, function (_, h) { return String.fromCodePoint(parseInt(h, 16)); })
+      .replace(/&#(\d+);/g, function (_, d) { return String.fromCodePoint(+d); })
+      .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+  }
+  function decodeSmart(u8) {
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(u8); }
+    catch (e) {}
+    try { return new TextDecoder("gbk").decode(u8); }
+    catch (e) { return new TextDecoder("utf-8").decode(u8); }
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function toast(msg, dur) {
+    var t = document.getElementById("toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(function () { t.classList.remove("show"); }, dur || 2600);
+  }
+  function setStatus(msg, isError) {
+    statusEl.style.display = "block";
+    statusEl.style.color = isError ? "var(--error)" : "var(--text-light)";
+    statusEl.textContent = msg;
+  }
+  function normalizeDegree(s) {
+    if (!s) return "";
+    if (/博士|Ph\.?\s?D/i.test(s)) return "博士";
+    if (/硕士|研究生|MBA|Master/i.test(s)) return "硕士";
+    if (/本科|学士|Bachelor/i.test(s)) return "本科";
+    if (/大专|专科/.test(s)) return "大专";
+    if (/高中|中专|职高|中技/.test(s)) return "高中/中专";
+    return "";
+  }
+
+  /* ======================================================================
+     DEFLATE 解压（RFC1951，用于 PDF 流 / ZIP 条目）
+     ====================================================================== */
+  function inflateRaw(input) {
+    var ip = 0, op = 0;
+    var out = new Uint8Array(Math.max(1024, input.length * 3 + 512));
+    function ensure(n) {
+      if (op + n <= out.length) return;
+      var cap = out.length * 2;
+      while (cap < op + n) cap *= 2;
+      var nb = new Uint8Array(cap);
+      nb.set(out.subarray(0, op));
+      out = nb;
+    }
+    var bitbuf = 0, bitcnt = 0;
+    function bits(need) {
+      while (bitcnt < need) {
+        if (ip >= input.length) throw new Error("deflate: 输入数据不完整");
+        bitbuf |= input[ip++] << bitcnt;
+        bitcnt += 8;
+      }
+      var val = bitbuf & ((1 << need) - 1);
+      bitbuf >>>= need;
+      bitcnt -= need;
+      return val;
+    }
+    function buildHuffman(lengths) {
+      var counts = new Uint16Array(16);
+      for (var i = 0; i < lengths.length; i++) counts[lengths[i]]++;
+      counts[0] = 0;
+      var offs = new Uint16Array(16), sum = 0;
+      for (var j = 1; j < 16; j++) { offs[j] = sum; sum += counts[j]; }
+      var symbols = new Uint16Array(lengths.length);
+      for (var k = 0; k < lengths.length; k++) {
+        if (lengths[k]) symbols[offs[lengths[k]]++] = k;
+      }
+      return { counts: counts, symbols: symbols };
+    }
+    function decodeSym(h) {
+      var code = 0, first = 0, index = 0;
+      for (var len = 1; len <= 15; len++) {
+        code |= bits(1);
+        var count = h.counts[len];
+        if (code - first < count) return h.symbols[index + (code - first)];
+        index += count;
+        first += count;
+        first <<= 1;
+        code <<= 1;
+      }
+      throw new Error("deflate: 无效编码");
+    }
+    var LBASE = [3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258];
+    var LEXT  = [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0];
+    var DBASE = [1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577];
+    var DEXT  = [0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13];
+    var fixedLit = null, fixedDist = null;
+    var flens = new Uint8Array(288);
+    do {
+      var bfinal = bits(1), btype = bits(2);
+      if (btype === 0) {
+        bitbuf = 0; bitcnt = 0;
+        if (ip + 4 > input.length) throw new Error("deflate: 存储块损坏");
+        var slen = input[ip] | (input[ip + 1] << 8);
+        ip += 4;
+        if (ip + slen > input.length) throw new Error("deflate: 存储块越界");
+        ensure(slen);
+        for (var s = 0; s < slen; s++) out[op++] = input[ip++];
+      } else if (btype === 1 || btype === 2) {
+        var litH, distH;
+        if (btype === 1) {
+          if (!fixedLit) {
+            var f;
+            for (f = 0; f < 144; f++) flens[f] = 8;
+            for (; f < 256; f++) flens[f] = 9;
+            for (; f < 280; f++) flens[f] = 7;
+            for (; f < 288; f++) flens[f] = 8;
+            fixedLit = buildHuffman(flens);
+            var dl = new Uint8Array(30);
+            for (var q = 0; q < 30; q++) dl[q] = 5;
+            fixedDist = buildHuffman(dl);
+          }
+          litH = fixedLit; distH = fixedDist;
+        } else {
+          var hlit = bits(5) + 257, hdist = bits(5) + 1, hclen = bits(4) + 4;
+          var order = [16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15];
+          var clens = new Uint8Array(19);
+          for (var ci = 0; ci < hclen; ci++) clens[order[ci]] = bits(3);
+          var clH = buildHuffman(clens);
+          var lens2 = new Uint8Array(hlit + hdist);
+          var li = 0;
+          while (li < hlit + hdist) {
+            var sym2 = decodeSym(clH);
+            if (sym2 < 16) {
+              lens2[li++] = sym2;
+            } else if (sym2 === 16) {
+              if (li === 0) throw new Error("deflate: 无效重复");
+              var prevLen = lens2[li - 1], rp = 3 + bits(2);
+              while (rp-- && li < hlit + hdist) lens2[li++] = prevLen;
+            } else if (sym2 === 17) {
+              var rz = 3 + bits(3);
+              while (rz-- && li < hlit + hdist) lens2[li++] = 0;
+            } else {
+              var rz2 = 11 + bits(7);
+              while (rz2-- && li < hlit + hdist) lens2[li++] = 0;
+            }
+          }
+          litH = buildHuffman(lens2.subarray(0, hlit));
+          distH = buildHuffman(lens2.subarray(hlit));
+        }
+        for (;;) {
+          var sym = decodeSym(litH);
+          if (sym < 256) {
+            ensure(1);
+            out[op++] = sym;
+          } else if (sym === 256) {
+            break;
+          } else {
+            sym -= 257;
+            if (sym >= 29) throw new Error("deflate: 无效长度码");
+            var ml = LBASE[sym] + (LEXT[sym] ? bits(LEXT[sym]) : 0);
+            var ds = decodeSym(distH);
+            if (ds >= 30) throw new Error("deflate: 无效距离码");
+            var md = DBASE[ds] + (DEXT[ds] ? bits(DEXT[ds]) : 0);
+            ensure(ml);
+            for (var c = 0; c < ml; c++, op++) out[op] = out[op - md];
+          }
+        }
+      } else {
+        throw new Error("deflate: 无效块类型");
+      }
+    } while (!bfinal);
+    return out.subarray(0, op);
+  }
+
+  /* ======================================================================
+     ZIP 解包（用于 DOCX / XLSX）
+     ====================================================================== */
+  function unzip(u8) {
+    var dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    var eocd = -1;
+    var minPos = Math.max(0, u8.length - 65558);
+    for (var i = u8.length - 22; i >= minPos; i--) {
+      if (u8[i] === 0x50 && u8[i + 1] === 0x4B && u8[i + 2] === 0x05 && u8[i + 3] === 0x06) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error("不是有效的 ZIP 文件");
+    var count = dv.getUint16(eocd + 10, true);
+    var p = dv.getUint32(eocd + 16, true);
+    var files = {};
+    var nameDec = new TextDecoder("utf-8");
+    for (var e = 0; e < count; e++) {
+      if (p + 46 > u8.length || u8[p] !== 0x50 || u8[p + 1] !== 0x4B) break;
+      var method = dv.getUint16(p + 10, true);
+      var csize = dv.getUint32(p + 20, true);
+      var nlen = dv.getUint16(p + 28, true);
+      var elen = dv.getUint16(p + 30, true);
+      var clen = dv.getUint16(p + 32, true);
+      var lho = dv.getUint32(p + 42, true);
+      var name = nameDec.decode(u8.subarray(p + 46, p + 46 + nlen));
+      if (lho + 30 <= u8.length) {
+        var lnlen = dv.getUint16(lho + 26, true);
+        var lelen = dv.getUint16(lho + 28, true);
+        var dStart = lho + 30 + lnlen + lelen;
+        var data = u8.subarray(dStart, dStart + csize);
+        if (method === 8) {
+          try { data = inflateRaw(data); } catch (err) { data = null; }
+        } else if (method !== 0) {
+          data = null;
+        }
+        if (data) files[name] = data;
+      }
+      p += 46 + nlen + elen + clen;
+    }
+    return files;
+  }
+
+  /* ---------- DOCX → 文本 ---------- */
+  function docxToText(u8) {
+    var z = unzip(u8);
+    var doc = z["word/document.xml"];
+    if (!doc) throw new Error("无法解析该 Word 文件（缺少 document.xml）");
+    var s = new TextDecoder("utf-8").decode(doc);
+    s = s.replace(/<w:tab[^>]*\/>/g, "\t")
+         .replace(/<w:br[^>]*\/>/g, "\n")
+         .replace(/<\/w:p>/g, "\n")
+         .replace(/<[^>]+>/g, "");
+    s = decodeXmlEntities(s);
+    return s.replace(/\n{3,}/g, "\n\n");
+  }
+
+  /* ---------- XLSX → 文本（按行、单元格以空格分隔） ---------- */
+  function xlsxToText(u8) {
+    var z = unzip(u8);
+    var dec = new TextDecoder("utf-8");
+    var shared = [];
+    var ssXml = z["xl/sharedStrings.xml"];
+    if (ssXml) {
+      var ss = dec.decode(ssXml);
+      var siRe = /<si>([\s\S]*?)<\/si>/g, m;
+      while ((m = siRe.exec(ss))) {
+        var text = "";
+        var tRe = /<t[^>]*>([\s\S]*?)<\/t>/g, t;
+        while ((t = tRe.exec(m[1]))) text += decodeXmlEntities(t[1]);
+        shared.push(text);
+      }
+    }
+    var sheetNames = Object.keys(z).filter(function (n) {
+      return /^xl\/worksheets\/sheet\d+\.xml$/.test(n);
+    }).sort(function (a, b) {
+      return parseInt((a.match(/(\d+)\.xml$/) || [0, 0])[1], 10) - parseInt((b.match(/(\d+)\.xml$/) || [0, 0])[1], 10);
+    });
+    if (!sheetNames.length) throw new Error("无法解析该 Excel 文件（未找到工作表）");
+    var out = [];
+    sheetNames.forEach(function (sn) {
+      var xml = dec.decode(z[sn]);
+      var rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g, rm;
+      var rowCount = 0;
+      while ((rm = rowRe.exec(xml)) && rowCount < 300) {
+        rowCount++;
+        var cells = [];
+        var cRe = /<c\b([^>]*)\/>|<c\b([^>]*)>([\s\S]*?)<\/c>/g, cm;
+        while ((cm = cRe.exec(rm[1]))) {
+          var attrs = cm[1] || cm[2] || "";
+          var inner = cm[3] || "";
+          var ct = (attrs.match(/t="([^"]*)"/) || [])[1] || "";
+          var val = "";
+          var vm = inner.match(/<v[^>]*>([\s\S]*?)<\/v>/);
+          var im = inner.match(/<is>[\s\S]*?<t[^>]*>([\s\S]*?)<\/t>/);
+          if (ct === "s" && vm) val = shared[+vm[1]] || "";
+          else if (ct === "inlineStr" && im) val = decodeXmlEntities(im[1]);
+          else if (vm) val = decodeXmlEntities(vm[1]);
+          cells.push(val);
+        }
+        var line = cells.join(" ").replace(/\s+$/, "");
+        if (line.trim()) out.push(line);
+      }
+    });
+    return out.join("\n");
+  }
+
+  /* ---------- 旧版 DOC / XLS（二进制）：UTF-16 / GBK 片段扫描 ---------- */
+  function isPrintableChar(c) {
+    return (c >= 0x20 && c <= 0x7E) || (c >= 0x4E00 && c <= 0x9FFF) ||
+           (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF00 && c <= 0xFFEF);
+  }
+  function legacyBinaryToText(u8) {
+    var out = [];
+    var cur = "";
+    for (var i = 0; i + 1 < u8.length; i += 2) {
+      var code = u8[i] | (u8[i + 1] << 8);
+      if (isPrintableChar(code)) cur += String.fromCharCode(code);
+      else { if (cur.trim().length >= 4) out.push(cur.trim()); cur = ""; }
+    }
+    if (cur.trim().length >= 4) out.push(cur.trim());
+    try {
+      var g = new TextDecoder("gbk").decode(u8);
+      var gm = g.match(/[\u4e00-\u9fa5][\u4e00-\u9fa5A-Za-z0-9，。：:、；;（）()\-—\s]{6,}[\u4e00-\u9fa5。；;）)]/g);
+      if (gm) {
+        gm.forEach(function (seg) {
+          seg = seg.trim();
+          var head = seg.slice(0, 8);
+          if (!out.some(function (o) { return o.indexOf(head) >= 0; })) out.push(seg);
+        });
+      }
+    } catch (e) {}
+    var text = out.join("\n");
+    if (!text.trim()) throw new Error("未能从该旧版 Office 文件中提取文本，建议另存为 .docx / .xlsx 后重试");
+    return text;
+  }
+
+  /* ======================================================================
+     PDF → 文本
+     ====================================================================== */
+  function pdfParseObjects(bin) {
+    var objs = {}, order = [];
+    var re = /(\d+)\s+\d+\s+obj\b/g, m;
+    while ((m = re.exec(bin))) {
+      var num = +m[1];
+      if (objs[num]) continue;
+      /* 防止把 %PDF-1.4 版本号、二进制流中的随机字节误判为对象头：
+         1) 匹配位置前一字符不能是数字或小数点；2) 对象体必须以 << 开头 */
+      if (m.index > 0 && /[0-9.]/.test(bin.charAt(m.index - 1))) continue;
+      var start = m.index + m[0].length;
+      var ws = start;
+      while (ws < bin.length && /\s/.test(bin.charAt(ws))) ws++;
+      if (bin.substr(ws, 2) !== "<<") continue;
+      var endIdx = bin.indexOf("endobj", start);
+      var limit = endIdx < 0 ? Math.min(bin.length, start + 5e6) : endIdx;
+      var body = bin.slice(start, limit);
+      var sIdx = body.search(/stream\b/);
+      if (sIdx >= 0) {
+        var dict = body.slice(0, sIdx);
+        var dStart = sIdx + 6;
+        if (body.charAt(dStart) === "\r") dStart++;
+        if (body.charAt(dStart) === "\n") dStart++;
+        var eIdx = body.lastIndexOf("endstream");
+        if (eIdx < 0) eIdx = body.length;
+        var raw = new Uint8Array(Math.max(0, eIdx - dStart));
+        for (var b = dStart; b < eIdx; b++) raw[b - dStart] = body.charCodeAt(b) & 0xFF;
+        var data = raw;
+        while (data.length && (data[data.length - 1] === 10 || data[data.length - 1] === 13)) {
+          data = data.subarray(0, data.length - 1);
+        }
+        if (/\/FlateDecode/.test(dict)) {
+          try { data = inflateRaw(data); } catch (e) { continue; }
+        }
+        objs[num] = { dict: dict, stream: data };
+      } else {
+        objs[num] = { dict: body, stream: null };
+      }
+      order.push(num);
+    }
+    return { objs: objs, order: order };
+  }
+
+  function pdfExpandObjStms(parsed) {
+    var objs = parsed.objs;
+    parsed.order.slice().forEach(function (num) {
+      var o = objs[num];
+      if (!o || !o.stream || !/\/Type\s*\/ObjStm/.test(o.dict)) return;
+      var N = +((o.dict.match(/\/N\s+(\d+)/) || [])[1] || 0);
+      var First = +((o.dict.match(/\/First\s+(\d+)/) || [])[1] || 0);
+      if (!N) return;
+      var s = u8ToLatin1(o.stream);
+      var header = s.slice(0, First).trim().split(/\s+/).map(Number);
+      for (var k = 0; k < N; k++) {
+        var on = header[k * 2], off = header[k * 2 + 1];
+        if (on === undefined || off === undefined || objs[on]) continue;
+        var end = (k + 1 < N && header[(k + 1) * 2 + 1] !== undefined) ? First + header[(k + 1) * 2 + 1] : s.length;
+        objs[on] = { dict: s.slice(First + off, end), stream: null };
+        parsed.order.push(on);
+      }
+    });
+  }
+
+  function hexToUnicode(hex) {
+    if (hex.length % 2) hex = "0" + hex;
+    var bytes = [];
+    for (var i = 0; i < hex.length; i += 2) bytes.push(parseInt(hex.substr(i, 2), 16));
+    var s = "";
+    for (var j = 0; j < bytes.length; j += 2) {
+      if (j + 1 < bytes.length) s += String.fromCharCode((bytes[j] << 8) | bytes[j + 1]);
+      else s += String.fromCharCode(bytes[j]);
+    }
+    return s;
+  }
+
+  function parseCMap(s) {
+    var map = new Map();
+    var m, re = /beginbfchar([\s\S]*?)endbfchar/g;
+    while ((m = re.exec(s))) {
+      var p, pr = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g;
+      while ((p = pr.exec(m[1]))) map.set(parseInt(p[1], 16), hexToUnicode(p[2]));
+    }
+    re = /beginbfrange([\s\S]*?)endbfrange/g;
+    while ((m = re.exec(s))) {
+      var r, rr = /<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*(?:<([0-9A-Fa-f]+)>|\[([^\]]*)\])/g;
+      while ((r = rr.exec(m[1]))) {
+        var lo = parseInt(r[1], 16), hi = parseInt(r[2], 16);
+        if (r[3] !== undefined) {
+          var base = parseInt(r[3], 16);
+          if (hi - lo >= 0 && hi - lo < 65536) {
+            for (var c = lo; c <= hi; c++) map.set(c, String.fromCharCode(base + (c - lo)));
+          }
+        } else if (r[4]) {
+          var ds = r[4].match(/<([0-9A-Fa-f]+)>/g) || [];
+          for (var d = 0; d < ds.length && lo + d <= hi; d++) map.set(lo + d, hexToUnicode(ds[d].slice(1, -1)));
+        }
+      }
+    }
+    return map;
+  }
+
+  function pdfCollectCidMap(parsed) {
+    var map = new Map();
+    parsed.order.forEach(function (num) {
+      var o = parsed.objs[num];
+      if (!o || !o.stream) return;
+      if (/\/Subtype\s*\/Image|\/DCTDecode|\/JPXDecode|\/CCITTFaxDecode/.test(o.dict)) return;
+      if (o.stream.length > 3e6) return;
+      var s = u8ToLatin1(o.stream);
+      if (/beginbf(char|range)/.test(s)) {
+        try {
+          parseCMap(s).forEach(function (v, k) { map.set(k, v); });
+        } catch (e) {}
+      }
+    });
+    return map;
+  }
+
+  function decodePdfBytes(bytes, cidMap) {
+    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      var s = "";
+      for (var i = 2; i + 1 < bytes.length; i += 2) s += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
+      return s;
+    }
+    if (cidMap && cidMap.size) {
+      var s2 = "";
+      for (var j = 0; j + 1 < bytes.length; j += 2) {
+        var code = (bytes[j] << 8) | bytes[j + 1];
+        if (cidMap.has(code)) s2 += cidMap.get(code);
+        else if (bytes[j] === 0 && bytes[j + 1] >= 32) s2 += String.fromCharCode(bytes[j + 1]);
+        else s2 += String.fromCharCode(code);
+      }
+      if (bytes.length % 2) s2 += String.fromCharCode(bytes[bytes.length - 1]);
+      return s2;
+    }
+    var s3 = "";
+    for (var k = 0; k < bytes.length; k++) {
+      var b = bytes[k];
+      if (b === 10 || b === 13) s3 += " ";
+      else if (b >= 32) s3 += String.fromCharCode(b);
+    }
+    return s3;
+  }
+
+  function pdfContentToText(content, cidMap) {
+    var out = "", line = "";
+    var i = 0, n = content.length;
+    function flush() { out += line + "\n"; line = ""; }
+    while (i < n) {
+      var c = content.charAt(i);
+      if (c === "(") {
+        var bytes = [];
+        i++;
+        while (i < n && content.charAt(i) !== ")") {
+          var ch = content.charAt(i);
+          if (ch === "\\") {
+            i++;
+            var e = content.charAt(i);
+            if (e === "n") { bytes.push(10); i++; }
+            else if (e === "r") { bytes.push(13); i++; }
+            else if (e === "t") { bytes.push(9); i++; }
+            else if (e === "b") { bytes.push(8); i++; }
+            else if (e === "f") { bytes.push(12); i++; }
+            else if (e >= "0" && e <= "7") {
+              var oct = e; i++;
+              while (oct.length < 3 && content.charAt(i) >= "0" && content.charAt(i) <= "7") { oct += content.charAt(i); i++; }
+              bytes.push(parseInt(oct, 8) & 0xFF);
+            }
+            else if (i >= n) break;
+            else { bytes.push(e.charCodeAt(0) & 0xFF); i++; }
+          } else {
+            bytes.push(ch.charCodeAt(0) & 0xFF);
+            i++;
+          }
+        }
+        i++;
+        line += decodePdfBytes(bytes, cidMap);
+        continue;
+      }
+      if (c === "<" && content.charAt(i + 1) !== "<") {
+        var j = i + 1;
+        while (j < n && content.charAt(j) !== ">") {
+          if (!/[0-9A-Fa-f\s]/.test(content.charAt(j))) break;
+          j++;
+        }
+        if (j < n && content.charAt(j) === ">") {
+          var hex = content.slice(i + 1, j).replace(/\s+/g, "");
+          if (hex.length % 2) hex += "0";
+          var hb = new Uint8Array(hex.length / 2);
+          for (var h = 0; h < hb.length; h++) hb[h] = parseInt(hex.substr(h * 2, 2), 16);
+          line += decodePdfBytes(hb, cidMap);
+          i = j + 1;
+          continue;
+        }
+        i++;
+        continue;
+      }
+      var two = content.substr(i, 2);
+      if (two === "Td" || two === "TD" || two === "T*" || two === "BT" || two === "ET") {
+        var nx = content.charAt(i + 2) || " ";
+        if (!/[A-Za-z]/.test(nx) || two === "T*") { flush(); i += 2; continue; }
+      }
+      i++;
+    }
+    out += line;
+    return out;
+  }
+
+  function mergeFragments(text) {
+    var lines = text.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+    var out = [];
+    lines.forEach(function (l) {
+      if (l.length === 1 && out.length) {
+        var prev = out[out.length - 1];
+        if (prev.length && !/[\s。；;，,：:]$/.test(prev)) { out[out.length - 1] = prev + l; return; }
+      }
+      out.push(l);
+    });
+    return out.join("\n");
+  }
+
+  function pdfPageContents(parsed) {
+    var objs = parsed.objs;
+    var contents = [];
+    var seen = {};
+    function contentRefs(d) {
+      var arr = [];
+      var am = d.match(/\/Contents\s*\[([^\]]*)\]/);
+      if (am) {
+        (am[1].match(/(\d+)\s+\d+\s+R/g) || []).forEach(function (r) { arr.push(+r.split(" ")[0]); });
+      } else {
+        var sm2 = d.match(/\/Contents\s+(\d+)\s+\d+\s+R/);
+        if (sm2) arr.push(+sm2[1]);
+      }
+      return arr;
+    }
+    function walk(num, depth) {
+      if (seen[num] || depth > 60 || !objs[num]) return;
+      seen[num] = 1;
+      var d = objs[num].dict;
+      if (/\/Type\s*\/Pages\b/.test(d)) {
+        var km = d.match(/\/Kids\s*\[([^\]]*)\]/);
+        if (km) (km[1].match(/(\d+)\s+\d+\s+R/g) || []).forEach(function (r) { walk(+r.split(" ")[0], depth + 1); });
+      } else if (/\/Type\s*\/Page(?![A-Za-z])/.test(d)) {
+        contentRefs(d).forEach(function (cn) { contents.push(cn); });
+      }
+    }
+    var root = null;
+    parsed.order.forEach(function (num) {
+      if (objs[num] && /\/Type\s*\/Catalog/.test(objs[num].dict)) {
+        var pm = objs[num].dict.match(/\/Pages\s+(\d+)\s+\d+\s+R/);
+        if (pm && root === null) root = +pm[1];
+      }
+    });
+    if (root !== null) walk(root, 0);
+    if (!contents.length) {
+      parsed.order.forEach(function (num) {
+        var o = objs[num];
+        if (o && /\/Type\s*\/Page(?![A-Za-z])/.test(o.dict)) contentRefs(o.dict).forEach(function (cn) { contents.push(cn); });
+      });
+    }
+    return contents;
+  }
+
+  function pdfToText(u8) {
+    var bin = u8ToLatin1(u8);
+    if (/\/Encrypt\s+\d+\s+\d+\s+R/.test(bin)) throw new Error("该 PDF 已加密，无法识别");
+    var parsed = pdfParseObjects(bin);
+    pdfExpandObjStms(parsed);
+    var cidMap = pdfCollectCidMap(parsed);
+    var refs = pdfPageContents(parsed);
+    var parts = [];
+    refs.forEach(function (num) {
+      var o = parsed.objs[num];
+      if (o && o.stream) parts.push(pdfContentToText(u8ToLatin1(o.stream), cidMap));
+    });
+    if (!parts.length) {
+      parsed.order.forEach(function (num) {
+        var o = parsed.objs[num];
+        if (o && o.stream && !/\/Subtype\s*\/Image/.test(o.dict) && o.stream.length < 3e6) {
+          var s = u8ToLatin1(o.stream);
+          if (/\bBT\b/.test(s) && /\bT[Jj]\b/.test(s)) parts.push(pdfContentToText(s, cidMap));
+        }
+      });
+    }
+    var text = mergeFragments(parts.join("\n"));
+    if (!text.trim()) throw new Error("未能从 PDF 提取到文本（可能是扫描/图片型 PDF，请截图后用图片识别）");
+    return text;
+  }
+
+  /* ======================================================================
+     图片 OCR（按需加载 tesseract.js）
+     加载顺序：同域本地文件（ocr/ 目录，与页面放在一起部署即可）
+     → 国内镜像 → 官方 CDN 自动回退，适配微信内置浏览器及国内网络环境
+     ====================================================================== */
+  var TESS_SCRIPT_SOURCES = [
+    "ocr/tesseract.min.js",
+    "https://registry.npmmirror.com/tesseract.js/5.1.1/files/dist/tesseract.min.js",
+    "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js",
+    "https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"
+  ];
+  /* 本地部署：worker、wasm 引擎、语言包全部走同域相对路径（无跨域、无墙）；
+     本地文件缺失时回退官方 CDN（worker/core 用库内置默认地址） */
+  var TESS_WORKER_CONFIGS = [
+    { workerPath: "ocr/worker.min.js", corePath: "ocr", langPath: "ocr/tessdata" },
+    { langPath: "https://tessdata.projectnaptha.com/4.0.0_fast" }
+  ];
+  var tesseractPromise = null;
+  function loadTesseract() {
+    if (window.Tesseract) return Promise.resolve();
+    if (tesseractPromise) return tesseractPromise;
+    tesseractPromise = new Promise(function (resolve, reject) {
+      var idx = 0;
+      function tryNext() {
+        if (idx >= TESS_SCRIPT_SOURCES.length) {
+          reject(new Error("文字识别引擎下载失败，请检查网络后重试"));
+          return;
+        }
+        setStatus("正在加载文字识别引擎（源 " + (idx + 1) + "/" + TESS_SCRIPT_SOURCES.length + "）...");
+        var s = document.createElement("script");
+        s.src = TESS_SCRIPT_SOURCES[idx++];
+        s.onload = function () { window.Tesseract ? resolve() : tryNext(); };
+        s.onerror = tryNext;
+        document.head.appendChild(s);
+      }
+      tryNext();
+    });
+    return tesseractPromise;
+  }
+  function createWorkerWithFallback(logger) {
+    var idx = 0;
+    function attempt() {
+      var cfg = TESS_WORKER_CONFIGS[idx];
+      cfg.logger = logger;
+      return window.Tesseract.createWorker("chi_sim+eng", 1, cfg).catch(function (err) {
+        if (idx + 1 < TESS_WORKER_CONFIGS.length) { idx++; return attempt(); }
+        throw err;
+      });
+    }
+    return attempt();
+  }
+  function ocrImage(file) {
+    return loadTesseract().then(function () {
+      setStatus("正在识别图片文字，可能需要十几秒...");
+      return createWorkerWithFallback(function (m) {
+        if (m && m.status === "recognizing text") {
+          setStatus("正在识别图片文字（" + Math.round((m.progress || 0) * 100) + "%）...");
+        }
+      });
+    }).then(function (worker) {
+      return worker.recognize(file).then(function (r) {
+        return worker.terminate().then(function () {
+          return (r && r.data && r.data.text) || "";
+        });
+      });
+    });
+  }
+
+  function isImageFile(file, u8) {
+    if ((file.type || "").indexOf("image/") === 0) return true;
+    if (!u8 || u8.length < 4) return false;
+    return (u8[0] === 0xFF && u8[1] === 0xD8) ||
+           (u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E) ||
+           (u8[0] === 0x47 && u8[1] === 0x49 && u8[2] === 0x46) ||
+           (u8[0] === 0x42 && u8[1] === 0x4D);
+  }
+
+  function extractText(file, u8, ext) {
+    if (u8[0] === 0x25 && u8[1] === 0x50 && u8[2] === 0x44 && u8[3] === 0x46) {
+      setStatus("正在解析 PDF...");
+      return pdfToText(u8);
+    }
+    if (u8[0] === 0x50 && u8[1] === 0x4B) {
+      setStatus("正在解析 Office 文件...");
+      var z = unzip(u8);
+      if (z["word/document.xml"]) return docxToText(u8);
+      return xlsxToText(u8);
+    }
+    if (isImageFile(file, u8)) return ocrImage(file);
+    if (u8[0] === 0xD0 && u8[1] === 0xCF && u8[2] === 0x11 && u8[3] === 0xE0) {
+      setStatus("正在解析旧版 Office 文件（尽力识别）...");
+      return legacyBinaryToText(u8);
+    }
+    if (/^(txt|csv|text)$/.test(ext)) return decodeSmart(u8);
+    throw new Error("暂不支持的文件格式（" + (ext || "未知") + "），请上传 PDF / Word / Excel / 图片");
+  }
+
+  /* ======================================================================
+     简历文本 → 表单字段（启发式规则）
+     ====================================================================== */
+  function parseResumeText(rawText) {
+    var d = { edu: [], work: [], proj: [] };
+    var text = String(rawText || "").replace(/\r/g, "\n").replace(/\u00a0/g, " ").replace(/[\u2028\u2029]/g, "\n");
+    /* OCR 常见问题：汉字之间被插入空格 */
+    if (((text.match(/[\u4e00-\u9fa5] [\u4e00-\u9fa5] /g) || []).length) > 4) {
+      text = text.replace(/([\u4e00-\u9fa5]) (?=[\u4e00-\u9fa5])/g, "$1");
+    }
+    var lines = text.split("\n").map(function (s) { return s.replace(/[ \t]+/g, " ").trim(); }).filter(Boolean);
+    var all = lines.join("\n");
+    /* 手机号中间可能被 OCR 插入空格/横线，先归一 */
+    all = all.replace(/1[3-9]\d[\s-]?\d{4}[\s-]?\d{4}/g, function (m) { return m.replace(/[\s-]/g, ""); });
+
+    function fv(re) {
+      var m = all.match(re);
+      return m ? String(m[1] || "").trim() : "";
+    }
+
+    /* 联系方式 */
+    d.phone = fv(/(?:^|[^\d])(1[3-9]\d{9})(?![\d])/);
+    d.email = fv(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,6})/);
+    var phones = all.match(/1[3-9]\d{9}/g) || [];
+
+    /* 姓名 */
+    d.name = fv(/姓\s*名\s*[:：]?\s*([^\s，,、。；;|｜()（）]{2,10})/);
+    if (!d.name) {
+      for (var i = 0; i < Math.min(lines.length, 6); i++) {
+        var nm = lines[i].match(/^([\u4e00-\u9fa5·]{2,4})$/);
+        if (nm && !/简历|求职|个人|先生|女士/.test(nm[1])) { d.name = nm[1]; break; }
+      }
+    }
+
+    /* 性别 */
+    d.gender = fv(/性\s*别\s*[:：]?\s*(男|女)/);
+    if (!d.gender) {
+      var gm = all.match(/(?:^|[^\u4e00-\u9fa5A-Za-z])(男|女)(?![\u4e00-\u9fa5A-Za-z])/);
+      if (gm) d.gender = gm[1];
+    }
+
+    /* 出生年月 */
+    var bm = all.match(/(?:出生|生日|出生日期|出生年月|生辰)\s*[:：]?\s*(\d{4})\s*[年.\/\-]\s*(\d{1,2})/);
+    if (!bm) bm = all.match(/(\d{4})\s*[年.\/\-]\s*(\d{1,2})\s*月?\s*出生/);
+    if (bm) d.birth = bm[1] + "-" + pad2(bm[2]);
+    if (!d.birth) {
+      var am = all.match(/年\s*龄\s*[:：]?\s*(\d{2})\s*岁?/);
+      if (am) d.birth = String(new Date().getFullYear() - (+am[1])) + "-01";
+    }
+
+    /* 身高 / 体重 / 婚姻 / 政治 */
+    d.height = fv(/身\s*高\s*[:：]?\s*(\d{2,3})\s*(?:cm|CM|厘米)?/);
+    d.weight = fv(/体\s*重\s*[:：]?\s*(\d{2,3})\s*(?:kg|KG|公斤|千克)?/);
+    d.marital = fv(/(未婚|已婚|离异|丧偶)/);
+    d.political = fv(/(中共党员|共青团员|无党派人士?|群众|民主党派)/);
+
+    /* 籍贯 / 现居 */
+    d.nativePlace = fv(/(?:籍\s*贯|户\s*口(?:所在地)?|户籍)\s*[:：]?\s*([\u4e00-\u9fa5]{2,12})/);
+    d.currentAddress = fv(/(?:现居住地|现居地址|现居地|居住地|现住址|现所在地)\s*[:：]?\s*([^\s，,；;、]{4,40})/);
+    if (!d.currentAddress) d.currentAddress = fv(/(?:所在城市|现居城市|现城市)\s*[:：]?\s*([\u4e00-\u9fa5]{2,15})/);
+
+    /* 学历 */
+    var eduLabel = fv(/(?:最高学历|文化程度|学\s*历)\s*[:：]\s*([^\s，,；;]{2,8})/);
+    if (eduLabel) d.education = normalizeDegree(eduLabel);
+    if (!d.education) {
+      var degs = [
+        ["博士", /博士|Ph\.?\s?D/i],
+        ["硕士", /硕士|研究生|MBA|Master/i],
+        ["本科", /本科|学士|Bachelor/i],
+        ["大专", /大专|专科/],
+        ["高中/中专", /高中|中专|职高|中技/]
+      ];
+      for (var g = 0; g < degs.length; g++) {
+        if (degs[g][1].test(all)) { d.education = degs[g][0]; break; }
+      }
+    }
+
+    /* 工作年限 / 岗位 / 薪资 */
+    d.expYears = fv(/工作年限\s*[:：]?\s*(\d{1,2})\s*年?/) || fv(/(\d{1,2})\s*年(?:以上)?(?:的)?工作(?:经验|经历)/);
+    d.position = fv(/(?:期望岗位|期望职位|求职意向|意向岗位|应聘岗位|目标职位|意向职位|应聘职位)\s*[:：]?\s*([^\n，,；;、　：:\s]{2,25})/);
+    d.salary = fv(/(?:期望薪资|期望月薪|薪资要求|期望薪水|月薪要求|期望待遇|期望薪酬|薪\s*资)\s*[:：]?\s*([^\n，,；;]{1,20})/);
+    if (!d.salary) {
+      var sm = all.match(/(\d+(?:\.\d+)?)\s*[-~—至]\s*(\d+(?:\.\d+)?)\s*[kK千]/);
+      if (sm) d.salary = sm[1] + "-" + sm[2] + "K";
+    }
+
+    /* 语言 */
+    d.language = fv(/(?:语言能力|外语水平?|语言水平?)\s*[:：]?\s*([^\n，,；;]{2,40})/);
+    if (!d.language) {
+      var cm = all.match(/CET[\s-]*[46]|大学英语[一二三四六]级|英语[四六]级|雅思\s*[0-9.]+|IELTS\s*[0-9.]+|托福\s*\d{2,3}|TOEFL\s*\d{2,3}|日语[一二三]级?|普通话[一二三]级?/i);
+      if (cm) d.language = cm[0];
+    }
+
+    /* 证书 / 爱好 */
+    d.certs = fv(/(?:证书|资格证|荣誉|获奖)\s*[:：]\s*([^\n]{2,60})/);
+    d.hobby = fv(/(?:兴趣爱好|爱\s*好)\s*[:：]?\s*([^\n，,。;；]{2,40})/);
+
+    /* 紧急联系人 */
+    d.emergencyName = fv(/紧急联系人\s*[:：]?\s*([^\s，,；;]{2,5})/);
+    d.emergencyRelation = fv(/(?:与(?:本人)?关系|关系)\s*[:：]?\s*(父亲|母亲|配偶|丈夫|妻子|儿子|女儿|兄弟|姐妹|朋友|同学|同事|亲属|兄|妹|弟|姐|父|母)/);
+    if (phones.length >= 2 && d.phone) {
+      var others = phones.filter(function (p) { return p !== d.phone; });
+      if (others.length) d.emergencyPhone = others[0];
+    }
+
+    /* 章节内容（技能 / 自我评价） */
+    function findLine(re) {
+      for (var fi = 0; fi < lines.length; fi++) if (re.test(lines[fi])) return fi;
+      return -1;
+    }
+    var stopRe = /教育经历|教育背景|工作经历|实习经历|项目经历|项目经验|专业技能|技能特长|自我评价|个人评价|证书荣誉|兴趣爱好|语言能力|联系方式|基本信息|获奖情况/;
+    function captureSection(idx, max) {
+      var buf = [];
+      for (var ci = idx + 1; ci < lines.length && buf.length < max; ci++) {
+        if (lines[ci].length <= 12 && stopRe.test(lines[ci])) break;
+        buf.push(lines[ci]);
+      }
+      return buf.join("\n");
+    }
+    var si = findLine(/专业技能|技能特长|个人技能|IT技能/);
+    if (si >= 0 && lines[si].length < 16) {
+      var sk = captureSection(si, 8);
+      if (sk) d.skills = sk;
+    }
+    if (!d.skills) d.skills = fv(/(?:专业技能|技能特长|个人技能)\s*[:：]\s*([^\n]{4,200})/);
+    var ei = findLine(/自我评价|个人评价|自我描述/);
+    if (ei >= 0 && lines[ei].length < 16) {
+      var se = captureSection(ei, 10);
+      if (se) d.selfEval = se;
+    }
+    if (!d.selfEval) d.selfEval = fv(/(?:自我评价|个人评价|自我描述)\s*[:：]\s*([^\n]{4,300})/);
+
+    /* 教育经历 */
+    var schoolSeen = {};
+    for (var li = 0; li < lines.length; li++) {
+      var l = lines[li];
+      if (!/(大学|学院|学校|University)/.test(l)) continue;
+      if (!/\d{4}/.test(l) && li > 0 && /\d{4}/.test(lines[li - 1]) && !/(大学|学院|学校)/.test(lines[li - 1])) {
+        l = lines[li - 1] + " " + l;
+      }
+      var schoolM = l.match(/([\u4e00-\u9fa5A-Za-z·]{2,20}(?:大学|学院|学校|University))/);
+      if (!schoolM) continue;
+      var school = schoolM[1];
+      if (schoolSeen[school]) continue;
+      schoolSeen[school] = 1;
+      var entry = { school: school, major: "", degree: "", start: "", end: "" };
+      var tm = l.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?\s*(?:[-–—~至到]|直到)\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?|至今|现在|今)?/);
+      if (tm) {
+        entry.start = tm[1] + "-" + (tm[2] ? pad2(tm[2]) : "09");
+        if (tm[3]) entry.end = tm[3] + "-" + (tm[4] ? pad2(tm[4]) : "06");
+      }
+      var dm = l.match(/博士|硕士|研究生|本科|学士|大专|专科|高中|中专|职高|MBA/);
+      if (dm) entry.degree = normalizeDegree(dm[0]);
+      var mj = l.match(/专业\s*[:：]?\s*([\u4e00-\u9fa5A-Za-z0-9（）()]{2,24})/);
+      if (mj) {
+        entry.major = mj[1];
+      } else {
+        var after = l.slice(l.indexOf(school) + school.length);
+        after = after.split(/博士|硕士|研究生|本科|学士|大专|专科|高中|中专|职高|MBA/)[0];
+        after = after.replace(/^[\s\-–—|:：,，、·（(]+/, "").replace(/[\s\-–—|:：,，、·（）()]+$/, "");
+        if (after.length >= 2 && after.length <= 24 && !/^\d/.test(after)) entry.major = after;
+      }
+      d.edu.push(entry);
+    }
+
+    /* 工作经历 */
+    var companySeen = {};
+    for (var wi = 0; wi < lines.length; wi++) {
+      var wl = lines[wi];
+      if (!/\d{4}/.test(wl)) continue;
+      var wt = wl.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?\s*(?:[-–—~至到]|直到)\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?|至今|现在|今)?/);
+      if (!wt) continue;
+      /* 排除单纯的日期（如出生年月 1996-05）：要求有起始月份、或结束年份、或"至今" */
+      if (!(wt[2] || wt[3] || /至今|现在/.test(wl.slice(wt.index)))) continue;
+      if (/(大学|学院|学校)/.test(wl) && !/(公司|集团|有限|银行|事务所|工作|实习)/.test(wl)) continue;
+      var company = "";
+      var ccm = wl.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
+      if (ccm) company = ccm[0];
+      var rest = wl.slice(wt.index + wt[0].length);
+      if (!company) {
+        var seg = rest.split(/[\s|｜,，;；]+/).filter(Boolean)[0] || "";
+        if (seg.length >= 2 && seg.length <= 20 && !/^\d+$/.test(seg)) company = seg;
+        else continue;
+      }
+      if (companySeen[company]) continue;
+      companySeen[company] = 1;
+      var wEntry = {
+        start: wt[1] + "-" + (wt[2] ? pad2(wt[2]) : "01"),
+        end: wt[3] ? wt[3] + "-" + (wt[4] ? pad2(wt[4]) : "01") : "",
+        company: company, pos: "", salary: "", reason: "", desc: ""
+      };
+      var posM = rest.match(/[\u4e00-\u9fa5A-Za-z0-9]{2,14}(?:工程师|经理|主管|专员|助理|设计师|测试|运维|分析师|顾问|教师|会计|出纳|销售|运营|架构师|总监|员工|职员|实习生|学徒|编辑|记者|护士|医生|律师|翻译|客服|文员|前台|司机|厨师|保安|普工)/);
+      if (posM) wEntry.pos = posM[0];
+      if (!wEntry.pos) {
+        var segs = rest.replace(company, " ").split(/[\s|｜,，;；]+/).filter(Boolean);
+        for (var sg = 0; sg < segs.length; sg++) {
+          if (segs[sg] !== company && segs[sg].length >= 2 && segs[sg].length <= 12 && !/^\d+$/.test(segs[sg])) { wEntry.pos = segs[sg]; break; }
+        }
+      }
+      var desc = [];
+      for (var dj = wi + 1; dj < Math.min(wi + 4, lines.length); dj++) {
+        var dl = lines[dj];
+        if (/\d{4}/.test(dl) && /[-–—~至到]/.test(dl)) break;
+        if (/(大学|学院|学校)/.test(dl) && !/(公司|工作|实习)/.test(dl)) break;
+        if (dl.length < 12 && /^(教育|工作|项目|技能|自我|证书|兴趣|语言|基本|联系|实习)/.test(dl)) break;
+        if (/^(期望|求职|意向|应聘|薪资)/.test(dl)) break;
+        desc.push(dl);
+      }
+      wEntry.desc = desc.join("\n").slice(0, 500);
+      d.work.push(wEntry);
+    }
+
+    /* 项目经历 */
+    var projSeen = {};
+    for (var pi = 0; pi < lines.length; pi++) {
+      var pl = lines[pi];
+      var pjName = "";
+      var pjLabel = pl.match(/项目名称\s*[:：]\s*([^\s，,；;]{2,40})/);
+      if (pjLabel) pjName = pjLabel[1];
+      if (!pjName && /项目/.test(pl) && /\d{4}/.test(pl)) {
+        var pt = pl.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*[-–—~至到]\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?|至今|现在)?/);
+        if (pt) {
+          var pRest = pl.slice(pt.index + pt[0].length).replace(/项目/, " ").replace(/^[：:\s\-–—|｜]+/, "");
+          pjName = pRest.split(/[\s|｜,，;；:：]+/).filter(Boolean)[0] || "";
+        }
+      }
+      if (!pjName || pjName.length < 2) continue;
+      if (projSeen[pjName]) continue;
+      projSeen[pjName] = 1;
+      var pEntry = { name: pjName, role: "", desc: "" };
+      var roleM = pl.match(/(?:角色|职务|担任|担当)\s*[:：]?\s*([^\s，,；;]{2,20})/);
+      if (roleM) pEntry.role = roleM[1];
+      var pdesc = [];
+      for (var pk = pi + 1; pk < Math.min(pi + 5, lines.length); pk++) {
+        if (/\d{4}/.test(lines[pk]) && /[-–—~至到]/.test(lines[pk])) break;
+        if (lines[pk].length < 12 && /^(教育|工作|项目|技能|自我|证书|兴趣|语言|基本|联系)/.test(lines[pk])) break;
+        pdesc.push(lines[pk]);
+      }
+      pEntry.desc = pdesc.join("\n").slice(0, 500);
+      d.proj.push(pEntry);
+    }
+
+    return d;
+  }
+
+  /* ======================================================================
+     识别结果 → 填入表单（只填空白项，不覆盖已填写内容）
+     ====================================================================== */
+  function applyParsed(d) {
+    var filled = [];
+    function fire(el) {
+      try {
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      } catch (e) {}
+    }
+    function setVal(name, val, label) {
+      if (!val) return;
+      var el = form.querySelector('[name="' + name + '"]');
+      if (!el) return;
+      if (el.tagName === "SELECT") {
+        if (el.value) return;
+        for (var i = 0; i < el.options.length; i++) {
+          if (el.options[i].value === val || el.options[i].text === val) {
+            el.value = el.options[i].value || el.options[i].text;
+            filled.push(label);
+            fire(el);
+            return;
+          }
+        }
+        return;
+      }
+      if (el.value && String(el.value).trim()) return;
+      el.value = val;
+      filled.push(label);
+      fire(el);
+    }
+    function setRadio(name, val, label) {
+      if (!val) return;
+      var r = form.querySelector('input[name="' + name + '"][value="' + val + '"]');
+      if (!r || r.checked) return;
+      r.checked = true;
+      filled.push(label);
+      fire(r);
+    }
+
+    setVal("name", d.name, "姓名");
+    setRadio("gender", d.gender, "性别");
+    setVal("birth", d.birth, "出生年月");
+    setVal("height", d.height, "身高");
+    setVal("weight", d.weight, "体重");
+    setVal("marital", d.marital, "婚姻状态");
+    setVal("political", d.political, "政治面貌");
+    setVal("nativePlace", d.nativePlace, "籍贯");
+    setVal("currentAddress", d.currentAddress, "现居住地");
+    setVal("phone", d.phone, "手机号码");
+    setVal("email", d.email, "电子邮箱");
+    setVal("emergencyName", d.emergencyName, "紧急联系人姓名");
+    setVal("emergencyRelation", d.emergencyRelation, "紧急联系人关系");
+    setVal("emergencyPhone", d.emergencyPhone, "紧急联系人电话");
+    setVal("education", d.education, "最高学历");
+    setVal("expYears", d.expYears, "工作年限");
+    setVal("position", d.position, "期望岗位");
+    setVal("salary", d.salary, "期望薪资");
+    setVal("language", d.language, "语言能力");
+    setVal("certs", d.certs, "证书与荣誉");
+    setVal("hobby", d.hobby, "兴趣爱好");
+    setVal("skills", d.skills, "专业技能");
+    setVal("selfEval", d.selfEval, "自我评价");
+
+    /* 多条目 */
+    var entryCfg = {
+      edu: { container: "eduEntries", key: "school", label: "教育经历",
+             fields: { start: "eduStart", end: "eduEnd", school: "eduSchool", major: "eduMajor", degree: "eduDegree" } },
+      work: { container: "workEntries", key: "company", label: "工作经历",
+              fields: { start: "wkStart", end: "wkEnd", company: "wkCompany", pos: "wkPos", salary: "wkSalary", reason: "wkReason", desc: "wkDesc" } },
+      proj: { container: "projEntries", key: "name", label: "项目经历",
+              fields: { start: "pjStart", end: "pjEnd", name: "pjName", role: "pjRole", desc: "pjDesc" } }
+    };
+    var counts = { edu: 0, work: 0, proj: 0 };
+    ["edu", "work", "proj"].forEach(function (type) {
+      var cfg = entryCfg[type];
+      var list = d[type] || [];
+      if (!list.length) return;
+      var wrap = document.getElementById(cfg.container);
+      if (!wrap) return;
+      var existKeys = [];
+      Array.prototype.forEach.call(wrap.querySelectorAll(".entry"), function (en) {
+        var k = en.querySelector('[name="' + cfg.fields[cfg.key] + '"]');
+        if (k && k.value.trim()) existKeys.push(k.value.trim());
+      });
+      /* 复用默认的空白条目 */
+      var emptyEntry = null;
+      Array.prototype.forEach.call(wrap.querySelectorAll(".entry"), function (en) {
+        if (emptyEntry) return;
+        var has = Array.prototype.some.call(en.querySelectorAll("input,select,textarea"), function (x) { return x.value.trim(); });
+        if (!has) emptyEntry = en;
+      });
+      var usedEmpty = false;
+      list.forEach(function (item) {
+        if (!item || !item[cfg.key]) return;
+        if (existKeys.indexOf(item[cfg.key]) >= 0) return;
+        existKeys.push(item[cfg.key]);
+        var entryEl;
+        if (!usedEmpty && emptyEntry) { entryEl = emptyEntry; usedEmpty = true; }
+        else {
+          if (typeof addEntry === "function") addEntry(type);
+          entryEl = wrap.lastChild;
+        }
+        if (!entryEl) return;
+        for (var fk in cfg.fields) {
+          var fel = entryEl.querySelector('[name="' + cfg.fields[fk] + '"]');
+          if (fel && item[fk]) fel.value = item[fk];
+        }
+        counts[type]++;
+        var firstEl = entryEl.querySelector("input,select,textarea");
+        if (firstEl) fire(firstEl);
+      });
+    });
+
+    return { fields: filled, edu: counts.edu, work: counts.work, proj: counts.proj };
+  }
+
+  /* ---------- 结果展示 ---------- */
+  function showResult(res) {
+    var html = '<div class="t">识别完成</div>';
+    if (res.fields.length) {
+      html += '<div>已自动填写 ' + res.fields.length + ' 项：' + escapeHtml(res.fields.join("、")) + '</div>';
+    }
+    var adds = [];
+    if (res.edu) adds.push("教育经历 " + res.edu + " 条");
+    if (res.work) adds.push("工作经历 " + res.work + " 条");
+    if (res.proj) adds.push("项目经历 " + res.proj + " 条");
+    if (adds.length) html += '<div>已添加：' + adds.join("；") + '</div>';
+    if (!res.fields.length && !adds.length) {
+      html += '<div>未识别到新的可填写内容（相关字段可能已有内容，识别结果不会覆盖已填写项），请核对或换用更清晰的文件重试</div>';
+    }
+    html += '<div style="color:#64748b;">自动识别可能存在误差，请逐项核对后再提交。</div>';
+    resultEl.innerHTML = html;
+    resultEl.style.display = "block";
+    try { resultEl.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (e) {}
+  }
+
+  /* ---------- 主流程 ---------- */
+  function handleFile(file) {
+    if (file.size > 25 * 1024 * 1024) {
+      toast("文件过大（超过 25MB），请上传较小的文件");
+      return;
+    }
+    resultEl.style.display = "none";
+    btnUpload.disabled = true;
+    var oldLabel = btnUpload.textContent;
+    btnUpload.textContent = "识别中...";
+    setStatus("正在读取文件...");
+    document.getElementById("loading").classList.add("show");
+
+    function done() {
+      document.getElementById("loading").classList.remove("show");
+      btnUpload.disabled = false;
+      btnUpload.textContent = oldLabel;
+    }
+
+    var fr = new FileReader();
+    fr.onerror = function () {
+      done();
+      setStatus("文件读取失败，请重试", true);
+    };
+    fr.onload = function () {
+      var u8 = new Uint8Array(fr.result);
+      var ext = ((file.name || "").split(".").pop() || "").toLowerCase();
+      Promise.resolve().then(function () {
+        return extractText(file, u8, ext);
+      }).then(function (textv) {
+        var d;
+        try { d = parseResumeText(textv); }
+        catch (e) { throw new Error("文本解析失败：" + (e && e.message || e)); }
+        var res = applyParsed(d);
+        done();
+        showResult(res);
+        toast("识别完成，请检查并补全表单");
+      }).catch(function (err) {
+        done();
+        setStatus("识别失败：" + (err && err.message || err), true);
+      });
+    };
+    fr.readAsArrayBuffer(file);
+  }
+
+  btnUpload.addEventListener("click", function () { fileInput.click(); });
+  fileInput.addEventListener("change", function () {
+    var f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    fileInput.value = "";
+    handleFile(f);
+  });
+})();
+</script>
+</body>
+</html>
