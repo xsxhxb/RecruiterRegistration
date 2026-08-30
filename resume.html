@@ -275,7 +275,7 @@
       <div class="hint" style="text-align:left;margin:6px 0 10px;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
         支持 PDF、Word（.docx / .doc）、Excel（.xlsx / .xls）、文本及照片截图。识别在本页面内完成，结果自动填入下方空白项，不会覆盖已填写内容。
       </div>
-      <input type="file" id="resumeFile" accept=".pdf,.docx,.doc,.xlsx,.xls,.csv,.txt" style="display:none" />
+      <input type="file" id="resumeFile" style="display:none" />
       <input type="file" id="resumeImageFile" accept="image/*" style="display:none" />
       <button type="button" class="upload-btn" id="btnUpload">上传简历文件（PDF / Word / Excel）</button>
       <button type="button" class="upload-btn upload-btn-image" id="btnUploadImage">拍照 / 相册识别图片</button>
@@ -2600,6 +2600,11 @@ document.addEventListener('change',function(e){
       return legacyBinaryToText(u8);
     }
     if (/^(txt|csv|text)$/.test(ext)) return decodeSmart(u8);
+    /* 兜底：旧版 Office / HTML / RTF（部分微信下载的 .doc 实为 HTML 文本） */
+    if (/^(doc|xls|wps|rtf|html|htm)$/i.test(ext)) {
+      setStatus("正在解析文档（尽力识别）...");
+      return legacyBinaryToText(u8);
+    }
     throw new Error("暂不支持的文件格式（" + (ext || "未知") + "），请上传 PDF / Word / Excel / 图片");
   }
 
@@ -2928,6 +2933,49 @@ document.addEventListener('change',function(e){
   }
 
   /* ======================================================================
+     清空表单：把表单重置为初始状态（每次识别前调用，避免新旧结果混淆）
+     ====================================================================== */
+  function resetForm() {
+    var els = form.elements;
+    var i, el;
+    /* 清空所有字段值 */
+    for (i = 0; i < els.length; i++) {
+      el = els[i];
+      if (!el.name) continue;
+      if (el.type === "radio" || el.type === "checkbox") {
+        el.checked = false;
+      } else {
+        el.value = "";
+      }
+    }
+    /* 恢复默认性别"男" */
+    var male = form.querySelector('input[name="gender"][value="男"]');
+    if (male) male.checked = true;
+    /* 签名日期默认今天 */
+    if (form.signDate) {
+      var td = new Date();
+      form.signDate.value = td.getFullYear() + "-" +
+        String(td.getMonth() + 1).padStart(2, "0") + "-" +
+        String(td.getDate()).padStart(2, "0");
+    }
+    /* 多条目重置为一条空条目 */
+    ["edu", "work", "proj"].forEach(function (type) {
+      var wrap = document.getElementById(type + "Entries");
+      if (wrap) {
+        wrap.innerHTML = "";
+        if (typeof addEntry === "function") addEntry(type);
+      }
+    });
+    /* 联动显示复位 */
+    var rd = document.getElementById("relativeDetailWrap");
+    var rr = document.getElementById("referrerWrap");
+    if (rd) rd.style.display = "none";
+    if (rr) rr.style.display = "none";
+    /* 清空本地草稿，避免旧草稿残留（填入新结果后会重新自动保存） */
+    try { localStorage.removeItem("candidate_draft_v2"); } catch (e) {}
+  }
+
+  /* ======================================================================
      识别结果 → 填入表单（只填空白项，不覆盖已填写内容）
      ====================================================================== */
   function applyParsed(d) {
@@ -3111,6 +3159,8 @@ document.addEventListener('change',function(e){
         var d;
         try { d = parseResumeText(textv); }
         catch (e) { throw new Error("文本解析失败：" + (e && e.message || e)); }
+        /* 识别成功：先清空旧信息，再填入新结果，避免新旧混淆 */
+        resetForm();
         var res = applyParsed(d);
         clearTimeout(timer);
         if (finished) return; /* 已超时，不再覆盖提示 */
