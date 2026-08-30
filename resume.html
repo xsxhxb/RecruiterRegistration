@@ -1913,6 +1913,17 @@ document.addEventListener('change',function(e){
     return out.subarray(0, op);
   }
 
+  /* PDF 的 FlateDecode 为 zlib 格式（RFC1950，2字节头+校验），
+     部分生成器输出裸 deflate，两种都自动适配 */
+  function inflateAuto(data) {
+    if (data.length >= 2 && data[0] === 0x78 && ((data[0] * 256 + data[1]) % 31) === 0) {
+      return inflateRaw(data.subarray(2));
+    }
+    try { return inflateRaw(data); } catch (e) {}
+    if (data.length >= 2 && data[0] === 0x78) return inflateRaw(data.subarray(2));
+    throw new Error("inflate: 无法解压数据流");
+  }
+
   /* ======================================================================
      ZIP 解包（用于 DOCX / XLSX）
      ====================================================================== */
@@ -2024,6 +2035,20 @@ document.addEventListener('change',function(e){
            (c >= 0x3000 && c <= 0x303F) || (c >= 0xFF00 && c <= 0xFFEF);
   }
   function legacyBinaryToText(u8) {
+    /* 部分 .doc 实际是 HTML（WPS"另存为网页"）或 RTF，先识别文本格式 */
+    var dec = "";
+    try { dec = decodeSmart(u8); } catch (e) { dec = ""; }
+    var headLc = dec.slice(0, 2000).toLowerCase();
+    if (dec && (headLc.indexOf("<html") >= 0 || headLc.indexOf("<body") >= 0 || headLc.indexOf("<!doctype") >= 0 || dec.slice(0, 6) === "{\\rtf")) {
+      var hs = dec.replace(/<script[\s\S]*?<\/script>/gi, " ")
+                  .replace(/<style[\s\S]*?<\/style>/gi, " ")
+                  .replace(/<br\s*\/?>/gi, "\n")
+                  .replace(/<\/(p|div|tr|h[1-6]|li|table)>/gi, "\n")
+                  .replace(/<[^>]+>/g, " ");
+      hs = decodeXmlEntities(hs.replace(/&nbsp;/gi, " "));
+      hs = hs.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+      if (hs) return hs;
+    }
     var out = [];
     var cur = "";
     for (var i = 0; i + 1 < u8.length; i += 2) {
@@ -2063,7 +2088,9 @@ document.addEventListener('change',function(e){
       var start = m.index + m[0].length;
       var ws = start;
       while (ws < bin.length && /\s/.test(bin.charAt(ws))) ws++;
-      if (bin.substr(ws, 2) !== "<<") continue;
+      var head2 = bin.substr(ws, 2);
+      /* 对象体以 <<（字典对象）或 [（数组对象，如 /Contents 间接数组）开头 */
+      if (head2 !== "<<" && head2.charAt(0) !== "[") continue;
       var endIdx = bin.indexOf("endobj", start);
       var limit = endIdx < 0 ? Math.min(bin.length, start + 5e6) : endIdx;
       var body = bin.slice(start, limit);
@@ -2082,7 +2109,7 @@ document.addEventListener('change',function(e){
           data = data.subarray(0, data.length - 1);
         }
         if (/\/FlateDecode/.test(dict)) {
-          try { data = inflateRaw(data); } catch (e) { continue; }
+          try { data = inflateAuto(data); } catch (e) { continue; }
         }
         objs[num] = { dict: dict, stream: data };
       } else {
@@ -2151,35 +2178,76 @@ document.addEventListener('change',function(e){
     return map;
   }
 
-  function pdfCollectCidMap(parsed) {
-    var map = new Map();
-    parsed.order.forEach(function (num) {
-      var o = parsed.objs[num];
-      if (!o || !o.stream) return;
-      if (/\/Subtype\s*\/Image|\/DCTDecode|\/JPXDecode|\/CCITTFaxDecode/.test(o.dict)) return;
-      if (o.stream.length > 3e6) return;
-      var s = u8ToLatin1(o.stream);
-      if (/beginbf(char|range)/.test(s)) {
-        try {
-          parseCMap(s).forEach(function (v, k) { map.set(k, v); });
-        } catch (e) {}
+  /* 从字典中提取某个 key 的值：内联字典（平衡匹配 <<>>）或间接引用（返回对象号） */
+  function pdfDictValue(d, key) {
+    var idx = d.indexOf("/" + key);
+    if (idx < 0) return null;
+    var rest = d.slice(idx + key.length + 1).replace(/^\s+/, "");
+    if (rest.slice(0, 2) === "<<") {
+      var depth = 0, i = 0;
+      while (i < rest.length) {
+        if (rest.substr(i, 2) === "<<") { depth++; i += 2; }
+        else if (rest.substr(i, 2) === ">>") { depth--; i += 2; if (depth === 0) return { dict: rest.slice(0, i) }; }
+        else i++;
       }
-    });
-    return map;
+      return { dict: rest };
+    }
+    var rm = rest.match(/^(\d+)\s+\d+\s+R/);
+    if (rm) return { ref: +rm[1] };
+    return null;
   }
 
-  function decodePdfBytes(bytes, cidMap) {
+  /* 构建字体 → ToUnicode 映射。
+     多字体 PDF 中每个字体的 CID→Unicode 映射都不同，必须按字体区分，
+     否则同一 CID 会用错字体的映射导致乱码 */
+  function pdfBuildFontMaps(parsed) {
+    var byObj = {};
+    var global = new Map();
+    parsed.order.forEach(function (num) {
+      var o = parsed.objs[num];
+      if (!o) return;
+      var tum = o.dict.match(/\/ToUnicode\s+(\d+)\s+\d+\s+R/);
+      if (!tum) return;
+      var tu = parsed.objs[+tum[1]];
+      if (!tu || !tu.stream) return;
+      if (tu.stream.length > 3e6) return;
+      var s = u8ToLatin1(tu.stream);
+      if (!/beginbf(char|range)/.test(s)) return;
+      try {
+        var map = parseCMap(s);
+        if (map.size) {
+          byObj[num] = map;
+          map.forEach(function (v, k) { if (!global.has(k)) global.set(k, v); });
+        }
+      } catch (e) {}
+    });
+    return { byObj: byObj, global: global };
+  }
+
+  function decodePdfBytes(bytes, fontInfo, globalMap) {
+    /* fontInfo: { map: Map|null, twoByte: bool } | null */
     if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
       var s = "";
       for (var i = 2; i + 1 < bytes.length; i += 2) s += String.fromCharCode((bytes[i] << 8) | bytes[i + 1]);
       return s;
     }
-    if (cidMap && cidMap.size) {
+    var map = null, twoByte = true;
+    if (fontInfo) {
+      map = fontInfo.map;
+      twoByte = fontInfo.twoByte;
+    } else if (globalMap && globalMap.size) {
+      map = globalMap;
+    }
+    if (map && map.size && twoByte) {
       var s2 = "";
       for (var j = 0; j + 1 < bytes.length; j += 2) {
         var code = (bytes[j] << 8) | bytes[j + 1];
-        if (cidMap.has(code)) s2 += cidMap.get(code);
+        if (map.has(code)) s2 += map.get(code);
         else if (bytes[j] === 0 && bytes[j + 1] >= 32) s2 += String.fromCharCode(bytes[j + 1]);
+        else if (bytes[j] >= 32 && bytes[j] < 0x80 && bytes[j + 1] >= 32 && bytes[j + 1] < 0x80) {
+          /* 两个可打印 ASCII 字节：实际是单字节文本（如 Word 的语言标记 en=US），逐字节输出 */
+          s2 += String.fromCharCode(bytes[j]) + String.fromCharCode(bytes[j + 1]);
+        }
         else s2 += String.fromCharCode(code);
       }
       if (bytes.length % 2) s2 += String.fromCharCode(bytes[bytes.length - 1]);
@@ -2194,12 +2262,24 @@ document.addEventListener('change',function(e){
     return s3;
   }
 
-  function pdfContentToText(content, cidMap) {
+  function pdfContentToText(content, pageFonts, globalMap) {
     var out = "", line = "";
     var i = 0, n = content.length;
+    var curFont = null;
     function flush() { out += line + "\n"; line = ""; }
     while (i < n) {
       var c = content.charAt(i);
+      if (c === "/") {
+        /* 字体切换操作符：/F1 12 Tf —— 后续文本用该字体的 ToUnicode 映射解码 */
+        var tfm = content.substr(i).match(/^\/([^\s\/\[\]<>()]+)\s+[-\d.]+\s+Tf\b/);
+        if (tfm) {
+          curFont = (pageFonts && pageFonts[tfm[1]]) || null;
+          i += tfm[0].length;
+          continue;
+        }
+        i++;
+        continue;
+      }
       if (c === "(") {
         var bytes = [];
         i++;
@@ -2226,7 +2306,7 @@ document.addEventListener('change',function(e){
           }
         }
         i++;
-        line += decodePdfBytes(bytes, cidMap);
+        line += decodePdfBytes(bytes, curFont, globalMap);
         continue;
       }
       if (c === "<" && content.charAt(i + 1) !== "<") {
@@ -2240,7 +2320,7 @@ document.addEventListener('change',function(e){
           if (hex.length % 2) hex += "0";
           var hb = new Uint8Array(hex.length / 2);
           for (var h = 0; h < hb.length; h++) hb[h] = parseInt(hex.substr(h * 2, 2), 16);
-          line += decodePdfBytes(hb, cidMap);
+          line += decodePdfBytes(hb, curFont, globalMap);
           i = j + 1;
           continue;
         }
@@ -2271,9 +2351,9 @@ document.addEventListener('change',function(e){
     return out.join("\n");
   }
 
-  function pdfPageContents(parsed) {
+  function pdfPageContents(parsed, fontMaps) {
     var objs = parsed.objs;
-    var contents = [];
+    var results = [];
     var seen = {};
     function contentRefs(d) {
       var arr = [];
@@ -2284,17 +2364,56 @@ document.addEventListener('change',function(e){
         var sm2 = d.match(/\/Contents\s+(\d+)\s+\d+\s+R/);
         if (sm2) arr.push(+sm2[1]);
       }
-      return arr;
+      /* /Contents 指向的对象本身是数组（间接数组）时，展开其中的引用 */
+      var expanded = [];
+      arr.forEach(function (cn) {
+        var co = objs[cn];
+        if (co && !co.stream && /^\s*\[/.test(co.dict)) {
+          (co.dict.match(/(\d+)\s+\d+\s+R/g) || []).forEach(function (r) { expanded.push(+r.split(" ")[0]); });
+        } else {
+          expanded.push(cn);
+        }
+      });
+      return expanded;
     }
-    function walk(num, depth) {
+    /* 解析 Resources（可为内联字典或间接引用，且可从父级 Pages 继承），
+       得到 字体名 → ToUnicode 映射 */
+    function fontsOf(resVal) {
+      var fonts = {};
+      if (!resVal) return fonts;
+      var resObj = resVal.dict !== undefined ? { dict: resVal.dict } : (objs[resVal.ref] || null);
+      if (!resObj) return fonts;
+      var fv = pdfDictValue(resObj.dict, "Font");
+      if (!fv) return fonts;
+      var fontObj = fv.dict !== undefined ? { dict: fv.dict } : (objs[fv.ref] || null);
+      if (!fontObj) return fonts;
+      var nameRe = /\/([A-Za-z0-9_.\-]+)\s+(\d+)\s+\d+\s+R/g, m;
+      while ((m = nameRe.exec(fontObj.dict))) {
+        var fnum = +m[2];
+        var fobj = objs[fnum];
+        /* Type0 复合字体为双字节编码，简单字体为单字节 */
+        var twoByte = fobj ? /\/Subtype\s*\/Type0/.test(fobj.dict) : true;
+        fonts[m[1]] = { map: fontMaps.byObj[fnum] || null, twoByte: twoByte };
+      }
+      return fonts;
+    }
+    function mergeFonts(base, own) {
+      var merged = {};
+      for (var k in base) merged[k] = base[k];
+      for (var k2 in own) merged[k2] = own[k2];
+      return merged;
+    }
+    function walk(num, depth, inheritedFonts) {
       if (seen[num] || depth > 60 || !objs[num]) return;
       seen[num] = 1;
       var d = objs[num].dict;
       if (/\/Type\s*\/Pages\b/.test(d)) {
+        var fonts = mergeFonts(inheritedFonts, fontsOf(pdfDictValue(d, "Resources")));
         var km = d.match(/\/Kids\s*\[([^\]]*)\]/);
-        if (km) (km[1].match(/(\d+)\s+\d+\s+R/g) || []).forEach(function (r) { walk(+r.split(" ")[0], depth + 1); });
+        if (km) (km[1].match(/(\d+)\s+\d+\s+R/g) || []).forEach(function (r) { walk(+r.split(" ")[0], depth + 1, fonts); });
       } else if (/\/Type\s*\/Page(?![A-Za-z])/.test(d)) {
-        contentRefs(d).forEach(function (cn) { contents.push(cn); });
+        var fonts2 = mergeFonts(inheritedFonts, fontsOf(pdfDictValue(d, "Resources")));
+        results.push({ contents: contentRefs(d), fonts: fonts2 });
       }
     }
     var root = null;
@@ -2304,14 +2423,16 @@ document.addEventListener('change',function(e){
         if (pm && root === null) root = +pm[1];
       }
     });
-    if (root !== null) walk(root, 0);
-    if (!contents.length) {
+    if (root !== null) walk(root, 0, {});
+    if (!results.length) {
       parsed.order.forEach(function (num) {
         var o = objs[num];
-        if (o && /\/Type\s*\/Page(?![A-Za-z])/.test(o.dict)) contentRefs(o.dict).forEach(function (cn) { contents.push(cn); });
+        if (o && /\/Type\s*\/Page(?![A-Za-z])/.test(o.dict)) {
+          results.push({ contents: contentRefs(o.dict), fonts: fontsOf(pdfDictValue(o.dict, "Resources")) });
+        }
       });
     }
-    return contents;
+    return results;
   }
 
   function pdfToText(u8) {
@@ -2319,19 +2440,21 @@ document.addEventListener('change',function(e){
     if (/\/Encrypt\s+\d+\s+\d+\s+R/.test(bin)) throw new Error("该 PDF 已加密，无法识别");
     var parsed = pdfParseObjects(bin);
     pdfExpandObjStms(parsed);
-    var cidMap = pdfCollectCidMap(parsed);
-    var refs = pdfPageContents(parsed);
+    var fontMaps = pdfBuildFontMaps(parsed);
+    var pages = pdfPageContents(parsed, fontMaps);
     var parts = [];
-    refs.forEach(function (num) {
-      var o = parsed.objs[num];
-      if (o && o.stream) parts.push(pdfContentToText(u8ToLatin1(o.stream), cidMap));
+    pages.forEach(function (pg) {
+      pg.contents.forEach(function (num) {
+        var o = parsed.objs[num];
+        if (o && o.stream) parts.push(pdfContentToText(u8ToLatin1(o.stream), pg.fonts, fontMaps.global));
+      });
     });
     if (!parts.length) {
       parsed.order.forEach(function (num) {
         var o = parsed.objs[num];
         if (o && o.stream && !/\/Subtype\s*\/Image/.test(o.dict) && o.stream.length < 3e6) {
           var s = u8ToLatin1(o.stream);
-          if (/\bBT\b/.test(s) && /\bT[Jj]\b/.test(s)) parts.push(pdfContentToText(s, cidMap));
+          if (/\bBT\b/.test(s) && /\bT[Jj]\b/.test(s)) parts.push(pdfContentToText(s, null, fontMaps.global));
         }
       });
     }
@@ -2384,13 +2507,38 @@ document.addEventListener('change',function(e){
     function attempt() {
       var cfg = TESS_WORKER_CONFIGS[idx];
       cfg.logger = logger;
-      return window.Tesseract.createWorker("chi_sim+eng", 1, cfg).catch(function (err) {
+      return window.Tesseract.createWorker("chi_sim", 1, cfg).catch(function (err) {
         if (idx + 1 < TESS_WORKER_CONFIGS.length) { idx++; return attempt(); }
         throw err;
       });
     }
     return attempt();
   }
+  /* 识别前把超大图片温和缩放（最长边约 2000px），用无损 PNG 避免精度损失 */
+  function preprocessImage(file) {
+    return new Promise(function (resolve) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var maxDim = 2000;
+        var w = img.naturalWidth || img.width;
+        var h = img.naturalHeight || img.height;
+        var scale = (w > maxDim || h > maxDim) ? Math.min(maxDim / w, maxDim / h) : 1;
+        if (scale >= 1) { URL.revokeObjectURL(url); resolve(file); return; }
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.round(w * scale);
+        canvas.height = Math.round(h * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        try {
+          canvas.toBlob(function (blob) { resolve(blob || file); }, "image/png");
+        } catch (e) { resolve(file); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+
   function ocrImage(file) {
     return loadTesseract().then(function () {
       setStatus("正在识别图片文字，可能需要十几秒...");
@@ -2400,9 +2548,11 @@ document.addEventListener('change',function(e){
         }
       });
     }).then(function (worker) {
-      return worker.recognize(file).then(function (r) {
-        return worker.terminate().then(function () {
-          return (r && r.data && r.data.text) || "";
+      return preprocessImage(file).then(function (processed) {
+        return worker.recognize(processed).then(function (r) {
+          return worker.terminate().then(function () {
+            return (r && r.data && r.data.text) || "";
+          });
         });
       });
     });
@@ -2448,9 +2598,24 @@ document.addEventListener('change',function(e){
       text = text.replace(/([\u4e00-\u9fa5]) (?=[\u4e00-\u9fa5])/g, "$1");
     }
     var lines = text.split("\n").map(function (s) { return s.replace(/[ \t]+/g, " ").trim(); }).filter(Boolean);
+    /* 去除 Word 导出 PDF 中混入的语言标记文本（en-US / zh-CN / en=US 等） */
+    lines = lines.map(function (l) {
+      return l.replace(/\b(?:en|zh)[-=_][A-Za-z]{2,4}\b/gi, "")
+              .replace(/^(?:en|zh)[-=_]?[A-Za-z]{2,4}(?=\d)/i, "");
+    }).filter(function (l) {
+      if (!l || /^(en|zh|fr|de|ja|ko|es|ru|it|pt)([-=][A-Za-z]{2,4})?$/i.test(l)) return false;
+      /* 旧版 .doc 提取出的 OLE 元数据 / 模板站水印噪音 */
+      if (/^www\./i.test(l)) return false;
+      if (/^(Root Entry|SummaryInformation|DocumentSummaryInformation|WordDocument|0Table|Data|WpsCustomData|Normal\.wpt|CompObj|Microsoft Office Word)$/i.test(l)) return false;
+      if (l.length < 60 && /(chachajianli|jianli\.|简历模板|制作网站|KSOProductBuildVer|快速制作)/i.test(l)) return false;
+      return true;
+    });
     var all = lines.join("\n");
+    /* 跨行合并版本（邮箱等常被换行打断） */
+    var flat = all.replace(/\n/g, "");
     /* 手机号中间可能被 OCR 插入空格/横线，先归一 */
     all = all.replace(/1[3-9]\d[\s-]?\d{4}[\s-]?\d{4}/g, function (m) { return m.replace(/[\s-]/g, ""); });
+    flat = flat.replace(/1[3-9]\d[\s-]?\d{4}[\s-]?\d{4}/g, function (m) { return m.replace(/[\s-]/g, ""); });
 
     function fv(re) {
       var m = all.match(re);
@@ -2459,23 +2624,36 @@ document.addEventListener('change',function(e){
 
     /* 联系方式 */
     d.phone = fv(/(?:^|[^\d])(1[3-9]\d{9})(?![\d])/);
-    d.email = fv(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,6})/);
+    d.email = (function () {
+      var m = flat.match(/([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,6})/);
+      return m ? m[1].trim() : "";
+    })();
     var phones = all.match(/1[3-9]\d{9}/g) || [];
 
-    /* 姓名 */
-    d.name = fv(/姓\s*名\s*[:：]?\s*([^\s，,、。；;|｜()（）]{2,10})/);
+    /* 姓名（容忍 OCR 在"姓 名"之间插入的空格/引号/标点） */
+    d.name = fv(/姓[\s"'\u2018\u2019\u201C\u201D。．·.\-]*名[\s"'\u2018\u2019\u201C\u201D。．·.\-]*[:：]?\s*([^\s，,、。；;|｜()（）"'\u2018\u2019\u201C\u201D]{2,10})/);
+    /* 常见姓氏校验：过滤旧版 .doc 提取出的乱码行误判为姓名 */
+    var SURNAMES = "李王张刘陈杨黄赵吴周徐孙马朱胡郭何高林罗郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛雷侯龙史陶黎贺顾毛郝龚邵万钱严武戴莫孔向常汤颜倪殷虞欧";
+    function isLikelyName(s) {
+      return s && s.length >= 2 && s.length <= 4 && SURNAMES.indexOf(s.charAt(0)) >= 0 && !/简历|求职|个人|先生|女士/.test(s);
+    }
     if (!d.name) {
-      for (var i = 0; i < Math.min(lines.length, 6); i++) {
+      for (var i = 0; i < Math.min(lines.length, 15); i++) {
         var nm = lines[i].match(/^([\u4e00-\u9fa5·]{2,4})$/);
-        if (nm && !/简历|求职|个人|先生|女士/.test(nm[1])) { d.name = nm[1]; break; }
+        if (nm && isLikelyName(nm[1])) { d.name = nm[1]; break; }
       }
+    }
+    if (!d.name && lines.length) {
+      /* 紧凑排版首行："胡女士女36岁..." / "张三 男 28 ..." */
+      var nm2 = lines[0].match(/^([\u4e00-\u9fa5·]{2,4}?)(?=(女士|先生)?\s*(女|男)(?![\u4e00-\u9fa5])|(女士|先生)?\s*\d{2,3}\s*岁)/);
+      if (nm2 && isLikelyName(nm2[1])) d.name = nm2[1];
     }
 
     /* 性别 */
     d.gender = fv(/性\s*别\s*[:：]?\s*(男|女)/);
     if (!d.gender) {
-      var gm = all.match(/(?:^|[^\u4e00-\u9fa5A-Za-z])(男|女)(?![\u4e00-\u9fa5A-Za-z])/);
-      if (gm) d.gender = gm[1];
+      var gm = all.match(/(?:男|女)(?![\u4e00-\u9fa5A-Za-z])/);
+      if (gm) d.gender = gm[0];
     }
 
     /* 出生年月 */
@@ -2485,6 +2663,11 @@ document.addEventListener('change',function(e){
     if (!d.birth) {
       var am = all.match(/年\s*龄\s*[:：]?\s*(\d{2})\s*岁?/);
       if (am) d.birth = String(new Date().getFullYear() - (+am[1])) + "-01";
+    }
+    if (!d.birth) {
+      /* 紧凑排版："36岁"（限定合理区间避免误配） */
+      var am2 = all.match(/(?:^|[^\d])(\d{2})\s*岁/);
+      if (am2 && +am2[1] >= 16 && +am2[1] <= 65) d.birth = String(new Date().getFullYear() - (+am2[1])) + "-01";
     }
 
     /* 身高 / 体重 / 婚姻 / 政治 */
@@ -2517,7 +2700,7 @@ document.addEventListener('change',function(e){
     /* 工作年限 / 岗位 / 薪资 */
     d.expYears = fv(/工作年限\s*[:：]?\s*(\d{1,2})\s*年?/) || fv(/(\d{1,2})\s*年(?:以上)?(?:的)?工作(?:经验|经历)/);
     d.position = fv(/(?:期望岗位|期望职位|求职意向|意向岗位|应聘岗位|目标职位|意向职位|应聘职位)\s*[:：]?\s*([^\n，,；;、　：:\s]{2,25})/);
-    d.salary = fv(/(?:期望薪资|期望月薪|薪资要求|期望薪水|月薪要求|期望待遇|期望薪酬|薪\s*资)\s*[:：]?\s*([^\n，,；;]{1,20})/);
+    d.salary = fv(/(?:期望薪资|期望月薪|薪资要求|期望薪水|月薪要求|期望待遇|期望薪酬|薪\s*资)\s*[:：]?\s*([^\n，,；;|｜]{1,20})/);
     if (!d.salary) {
       var sm = all.match(/(\d+(?:\.\d+)?)\s*[-~—至]\s*(\d+(?:\.\d+)?)\s*[kK千]/);
       if (sm) d.salary = sm[1] + "-" + sm[2] + "K";
@@ -2571,17 +2754,27 @@ document.addEventListener('change',function(e){
 
     /* 教育经历 */
     var schoolSeen = {};
+    var eduDegreeRe = /^(本科|硕士|博士|大专|专科|研究生|学士|高中|中专|职高|MBA)$/;
     for (var li = 0; li < lines.length; li++) {
       var l = lines[li];
       if (!/(大学|学院|学校|University)/.test(l)) continue;
-      if (!/\d{4}/.test(l) && li > 0 && /\d{4}/.test(lines[li - 1]) && !/(大学|学院|学校)/.test(lines[li - 1])) {
-        l = lines[li - 1] + " " + l;
+      /* 时间范围可能在上方几行（换行排版），中间可能隔着学历关键词行 */
+      if (!/\d{4}/.test(l) && li > 0) {
+        var prefixParts = [];
+        for (var lb = 1; lb <= 3; lb++) {
+          var pl = lines[li - lb];
+          if (!pl) break;
+          if (/(大学|学院|学校)/.test(pl)) break;
+          if (/\d{4}/.test(pl) && /[-–—~至到]/.test(pl)) { l = pl + " " + prefixParts.join(" ") + " " + l; break; }
+          if (eduDegreeRe.test(pl)) prefixParts.unshift(pl);
+        }
       }
       var schoolM = l.match(/([\u4e00-\u9fa5A-Za-z·]{2,20}(?:大学|学院|学校|University))/);
       if (!schoolM) continue;
       var school = schoolM[1];
-      if (schoolSeen[school]) continue;
-      schoolSeen[school] = 1;
+      /* 剥离"毕业于/就读于"前缀，排除"年参加学校"之类误匹配 */
+      school = school.replace(/.*(毕业于|就读于|考入)/, "");
+      if (/参加|从事|负责|担任|进入|所在/.test(school) || school.length < 4) continue;
       var entry = { school: school, major: "", degree: "", start: "", end: "" };
       var tm = l.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?\s*(?:[-–—~至到]|直到)\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?|至今|现在|今)?/);
       if (tm) {
@@ -2599,6 +2792,14 @@ document.addEventListener('change',function(e){
         after = after.replace(/^[\s\-–—|:：,，、·（(]+/, "").replace(/[\s\-–—|:：,，、·（）()]+$/, "");
         if (after.length >= 2 && after.length <= 24 && !/^\d/.test(after)) entry.major = after;
       }
+      /* 专业也可能在下一行 */
+      if (!entry.major) {
+        var nl3 = lines[li + 1] || "";
+        if (/^[\u4e00-\u9fa5A-Za-z]{4,24}$/.test(nl3) && !/(大学|学院|学校)/.test(nl3) && !eduDegreeRe.test(nl3)) entry.major = nl3;
+      }
+      var eduKey = school + "|" + entry.start;
+      if (schoolSeen[eduKey]) continue;
+      schoolSeen[eduKey] = 1;
       d.edu.push(entry);
     }
 
@@ -2609,18 +2810,41 @@ document.addEventListener('change',function(e){
       if (!/\d{4}/.test(wl)) continue;
       var wt = wl.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?\s*(?:[-–—~至到]|直到)\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?|至今|现在|今)?/);
       if (!wt) continue;
-      /* 排除单纯的日期（如出生年月 1996-05）：要求有起始月份、或结束年份、或"至今" */
-      if (!(wt[2] || wt[3] || /至今|现在/.test(wl.slice(wt.index)))) continue;
+      /* 排除单纯的日期（如出生日期 1996-03-11）：要求有结束年份、"至今"，
+         或行尾以分隔符结尾（跨行时间范围，如"2021.07 -"） */
+      if (!(wt[3] || /至今|现在/.test(wl.slice(wt.index)) || /[-–—~至到]\s*$/.test(wl))) continue;
       if (/(大学|学院|学校)/.test(wl) && !/(公司|集团|有限|银行|事务所|工作|实习)/.test(wl)) continue;
       var company = "";
       var ccm = wl.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
       if (ccm) company = ccm[0];
+      var mergedLa = 0;
+      if (!company) {
+        /* 时间行本身无公司名：向后看几行找（换行排版，如"2021.07-\n至今\n在XX公司..."） */
+        for (var la = 1; la <= 3 && !company; la++) {
+          var nl2 = lines[wi + la];
+          if (!nl2 || (/\d{4}/.test(nl2) && /[-–—~至到]/.test(nl2))) break;
+          if (/^(至今|现在|今)$/.test(nl2)) { wl = wl + " " + nl2; mergedLa = la; continue; }
+          if (eduDegreeRe.test(nl2)) continue;
+          if (/(大学|学院|学校)/.test(nl2) && !/(公司|工作|实习|集团)/.test(nl2)) continue;
+          var ccm2 = nl2.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
+          if (ccm2) { company = ccm2[0]; wl = wl + " " + nl2; mergedLa = la; }
+          else if (/^(在|于|任职于|就职于|入职|加入)/.test(nl2)) {
+            var seg2 = nl2.replace(/^(在|于|任职于|就职于|入职|加入)/, "").split(/[\s|｜,，;；]+/).filter(Boolean)[0] || "";
+            if (seg2.length >= 2 && seg2.length <= 20 && !/^\d+$/.test(seg2)) { company = seg2; wl = wl + " " + nl2; mergedLa = la; }
+          }
+        }
+      }
       var rest = wl.slice(wt.index + wt[0].length);
       if (!company) {
         var seg = rest.split(/[\s|｜,，;；]+/).filter(Boolean)[0] || "";
         if (seg.length >= 2 && seg.length <= 20 && !/^\d+$/.test(seg)) company = seg;
-        else continue;
       }
+      /* 公司名清理与校验 */
+      if (company) {
+        company = company.replace(/^\d{1,4}\s*/, "").replace(/^(在|于|任职于|就职于|入职|加入)/, "").replace(/^(工作经历|教育经历|项目经历|实习经历)/, "");
+      }
+      if (!company || company.length < 2 || company.indexOf("、") >= 0 || company.indexOf("：") >= 0 || company.indexOf(":") >= 0 ||
+          /^(项目背景|工作内容|项目描述|工作职责|岗位职责|任职要求|招聘工作)/.test(company)) continue;
       if (companySeen[company]) continue;
       companySeen[company] = 1;
       var wEntry = {
@@ -2629,19 +2853,24 @@ document.addEventListener('change',function(e){
         company: company, pos: "", salary: "", reason: "", desc: ""
       };
       var posM = rest.match(/[\u4e00-\u9fa5A-Za-z0-9]{2,14}(?:工程师|经理|主管|专员|助理|设计师|测试|运维|分析师|顾问|教师|会计|出纳|销售|运营|架构师|总监|员工|职员|实习生|学徒|编辑|记者|护士|医生|律师|翻译|客服|文员|前台|司机|厨师|保安|普工)/);
-      if (posM) wEntry.pos = posM[0];
+      if (posM) wEntry.pos = posM[0].replace(/(内容|职责|描述)[:：]?$/, "");
+      if (!wEntry.pos) {
+        var zy = rest.match(/从事([\u4e00-\u9fa5A-Za-z0-9]{2,15})/);
+        if (zy) wEntry.pos = zy[1];
+      }
       if (!wEntry.pos) {
         var segs = rest.replace(company, " ").split(/[\s|｜,，;；]+/).filter(Boolean);
         for (var sg = 0; sg < segs.length; sg++) {
           if (segs[sg] !== company && segs[sg].length >= 2 && segs[sg].length <= 12 && !/^\d+$/.test(segs[sg])) { wEntry.pos = segs[sg]; break; }
         }
       }
+      if (wEntry.pos) wEntry.pos = wEntry.pos.replace(/(内容|职责|描述)[:：]?$/, "").trim();
       var desc = [];
-      for (var dj = wi + 1; dj < Math.min(wi + 4, lines.length); dj++) {
+      for (var dj = wi + 1 + mergedLa; dj < Math.min(wi + 4 + mergedLa, lines.length); dj++) {
         var dl = lines[dj];
         if (/\d{4}/.test(dl) && /[-–—~至到]/.test(dl)) break;
         if (/(大学|学院|学校)/.test(dl) && !/(公司|工作|实习)/.test(dl)) break;
-        if (dl.length < 12 && /^(教育|工作|项目|技能|自我|证书|兴趣|语言|基本|联系|实习)/.test(dl)) break;
+        if (dl.length < 14 && /^(教育|工作|项目|技能|自我|个人|证书|兴趣|语言|基本|联系|实习|期望|求职)/.test(dl)) break;
         if (/^(期望|求职|意向|应聘|薪资)/.test(dl)) break;
         desc.push(dl);
       }
@@ -2821,6 +3050,7 @@ document.addEventListener('change',function(e){
   }
 
   /* ---------- 主流程 ---------- */
+  var OCR_TIMEOUT_MS = 60000; /* 整体识别超时上限 60 秒 */
   function handleFile(file) {
     if (file.size > 25 * 1024 * 1024) {
       toast("文件过大（超过 25MB），请上传较小的文件");
@@ -2833,7 +3063,10 @@ document.addEventListener('change',function(e){
     setStatus("正在读取文件...");
     document.getElementById("loading").classList.add("show");
 
+    var finished = false;
     function done() {
+      if (finished) return;
+      finished = true;
       document.getElementById("loading").classList.remove("show");
       btnUpload.disabled = false;
       btnUpload.textContent = oldLabel;
@@ -2847,6 +3080,13 @@ document.addEventListener('change',function(e){
     fr.onload = function () {
       var u8 = new Uint8Array(fr.result);
       var ext = ((file.name || "").split(".").pop() || "").toLowerCase();
+
+      /* 60 秒超时兜底：网络卡顿或大图 OCR 过慢时不再无限转圈 */
+      var timer = setTimeout(function () {
+        done();
+        setStatus("识别超时（超过 60 秒），请检查网络后重试，或换用更清晰的图片", true);
+      }, OCR_TIMEOUT_MS);
+
       Promise.resolve().then(function () {
         return extractText(file, u8, ext);
       }).then(function (textv) {
@@ -2854,10 +3094,14 @@ document.addEventListener('change',function(e){
         try { d = parseResumeText(textv); }
         catch (e) { throw new Error("文本解析失败：" + (e && e.message || e)); }
         var res = applyParsed(d);
+        clearTimeout(timer);
+        if (finished) return; /* 已超时，不再覆盖提示 */
         done();
         showResult(res);
         toast("识别完成，请检查并补全表单");
       }).catch(function (err) {
+        clearTimeout(timer);
+        if (finished) return;
         done();
         setStatus("识别失败：" + (err && err.message || err), true);
       });
