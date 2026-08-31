@@ -2788,6 +2788,25 @@ document.addEventListener('change',function(e){
       var nm2 = lines[0].match(/^([\u4e00-\u9fa5·]{2,4}?)(?=(女士|先生)?\s*(女|男)(?![\u4e00-\u9fa5])|(女士|先生)?\s*\d{2,3}\s*岁)/);
       if (nm2 && isLikelyName(nm2[1])) d.name = nm2[1];
     }
+    if (!d.name) {
+      /* 行内搜索：前几行查找"常见姓氏开头"的连续中文片段
+         （推荐报告等排版：姓名前后混有图标噪音，如"加   邓悦彤大mi"） */
+      outer:
+      for (var ni = 0; ni < Math.min(lines.length, 10); ni++) {
+        var nameSegs = lines[ni].match(/[\u4e00-\u9fa5]{2,4}/g) || [];
+        for (var si = 0; si < nameSegs.length; si++) {
+          var cand = nameSegs[si];
+          /* 片段超 3 字时优先取前 3 字（姓名以 2-3 字最常见，尾部多为噪音） */
+          var tries = cand.length > 3 ? [cand.slice(0, 3), cand.slice(0, 2), cand] : [cand];
+          for (var ti = 0; ti < tries.length; ti++) {
+            if (isLikelyName(tries[ti]) && !/简历|求职|个人|姓名|性别|年龄|学历|经验|城市|岗位|意向|推荐|时间|学校|大学|学院/.test(tries[ti])) {
+              d.name = tries[ti];
+              break outer;
+            }
+          }
+        }
+      }
+    }
 
     /* 性别 */
     d.gender = fv(/性\s*别\s*[:：]?\s*(男|女)/);
@@ -2819,7 +2838,7 @@ document.addEventListener('change',function(e){
     /* 籍贯 / 现居 */
     d.nativePlace = fv(/(?:籍\s*贯|户\s*口(?:所在地)?|户籍)\s*[:：]?\s*([\u4e00-\u9fa5]{2,12})/);
     d.currentAddress = fv(/(?:现居住地|现居地址|现居地|居住地|现住址|现所在地)\s*[:：]?\s*([^\s，,；;、]{4,40})/);
-    if (!d.currentAddress) d.currentAddress = fv(/(?:所在城市|现居城市|现城市)\s*[:：]?\s*([\u4e00-\u9fa5]{2,15})/);
+    if (!d.currentAddress) d.currentAddress = fv(/(?:所在城市|现居城市|现城市|意向城市)\s*[:：]?\s*([\u4e00-\u9fa5]{2,15})/);
 
     /* 学历 */
     var eduLabel = fv(/(?:最高学历|文化程度|学\s*历)\s*[:：]\s*([^\s，,；;]{2,8})/);
@@ -2839,7 +2858,17 @@ document.addEventListener('change',function(e){
 
     /* 工作年限 / 岗位 / 薪资 */
     d.expYears = fv(/工作年限\s*[:：]?\s*(\d{1,2})\s*年?/) || fv(/(\d{1,2})\s*年(?:以上)?(?:的)?工作(?:经验|经历)/);
-    d.position = fv(/(?:期望岗位|期望职位|求职意向|意向岗位|应聘岗位|目标职位|意向职位|应聘职位)\s*[:：]?\s*([^\n，,；;、　：:\s]{2,25})/);
+    /* 期望岗位：循环匹配并过滤"值本身是标签"的情况（跨行排版时
+       "求职意向\n意向岗位: 商品规划总监" 会误取下一个标签名） */
+    var posRe = /(?:期望岗位|期望职位|求职意向|意向岗位|应聘岗位|目标职位|意向职位|应聘职位)\s*[:：]?\s*([^\s，,；;、　：:]{2,25})/g;
+    var posLabels = /^(期望岗位|期望职位|求职意向|意向岗位|应聘岗位|目标职位|意向职位|应聘职位|所在城市|意向城市|求职类型|社招|全职|兼职)$/;
+    var pm3;
+    while ((pm3 = posRe.exec(all))) {
+      if (!posLabels.test(pm3[1])) { d.position = pm3[1]; break; }
+      /* 捕获值本身是标签（跨行误取）：回退到捕获组起点，
+         让该标签与自己的真实值重新匹配 */
+      posRe.lastIndex = pm3.index + pm3[0].indexOf(pm3[1]);
+    }
     d.salary = fv(/(?:期望薪资|期望月薪|薪资要求|期望薪水|月薪要求|期望待遇|期望薪酬|薪\s*资)\s*[:：]?\s*([^\n，,；;|｜]{1,20})/);
     if (!d.salary) {
       var sm = all.match(/(\d+(?:\.\d+)?)\s*[-~—至]\s*(\d+(?:\.\d+)?)\s*[kK千]/);
