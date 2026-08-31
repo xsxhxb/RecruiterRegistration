@@ -2256,6 +2256,18 @@ document.addEventListener('change',function(e){
     } else if (globalMap && globalMap.size) {
       map = globalMap;
     }
+    if (map && map.size && !twoByte) {
+      /* 单字节字体 + ToUnicode 映射（如 SimHei 子集：码 0x01→"简"、0x02→"历"），
+         逐字节查映射，无映射的字节按 latin1 输出 */
+      var s1 = "";
+      for (var kb = 0; kb < bytes.length; kb++) {
+        var bb = bytes[kb];
+        if (map.has(bb)) s1 += map.get(bb);
+        else if (bb === 10 || bb === 13) s1 += " ";
+        else if (bb >= 32) s1 += String.fromCharCode(bb);
+      }
+      return s1;
+    }
     if (map && map.size && twoByte) {
       var s2 = "";
       for (var j = 0; j + 1 < bytes.length; j += 2) {
@@ -2662,9 +2674,12 @@ document.addEventListener('change',function(e){
     /* 姓名（容忍 OCR 在"姓 名"之间插入的空格/引号/标点） */
     d.name = fv(/姓[\s"'\u2018\u2019\u201C\u201D。．·.\-]*名[\s"'\u2018\u2019\u201C\u201D。．·.\-]*[:：]?\s*([^\s，,、。；;|｜()（）"'\u2018\u2019\u201C\u201D]{2,10})/);
     /* 常见姓氏校验：过滤旧版 .doc 提取出的乱码行误判为姓名 */
-    var SURNAMES = "李王张刘陈杨黄赵吴周徐孙马朱胡郭何高林罗郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛雷侯龙史陶黎贺顾毛郝龚邵万钱严武戴莫孔向常汤颜倪殷虞欧";
+    var SURNAMES = "李王张刘陈杨黄赵吴周徐孙马朱胡郭何高林罗郑梁谢宋唐许韩冯邓曹彭曾肖田董袁潘于蒋蔡余杜叶程苏魏吕丁任沈姚卢姜崔钟谭陆汪范金石廖贾夏韦付方白邹孟熊秦邱江尹薛雷侯龙史陶黎贺顾毛郝龚邵万钱严武戴莫孔向常汤颜倪殷虞欧俞庄晏柴瞿阎连管桑桂濮牛通边扈燕冀郏浦尚农温别习容古易慎戈终暨居衡步都耿满弘匡国文寇广禄阙东沃利蔚隆师巩聂晁勾敖融冷辛阚那简饶空毋沙养鞠须丰巢蒯相查后荆红游竺权盖益桓公卞朴代湛汲糜乌焦弓牧隗宓蓬郗班仰秋仲宫宁仇栾暴钭厉戎祖符詹束幸韶郜蓟薄印宿怀邰从鄂索咸籍赖卓蔺屠蒙乔阴胥苍双闻党翟贡逄姬扶堵冉郦璩寿";
     function isLikelyName(s) {
-      return s && s.length >= 2 && s.length <= 4 && SURNAMES.indexOf(s.charAt(0)) >= 0 && !/简历|求职|个人|先生|女士/.test(s);
+      if (!s) return false;
+      /* "X先生"/"X女士"（猎聘等平台匿名简历），保留整体 */
+      if (/^[\u4e00-\u9fa5]{1,2}(先生|女士)$/.test(s)) return SURNAMES.indexOf(s.charAt(0)) >= 0;
+      return s.length >= 2 && s.length <= 4 && SURNAMES.indexOf(s.charAt(0)) >= 0 && !/简历|求职|个人|先生|女士/.test(s);
     }
     if (!d.name) {
       for (var i = 0; i < Math.min(lines.length, 15); i++) {
@@ -2801,8 +2816,8 @@ document.addEventListener('change',function(e){
       var schoolM = l.match(/([\u4e00-\u9fa5A-Za-z·]{2,20}(?:大学|学院|学校|University))/);
       if (!schoolM) continue;
       var school = schoolM[1];
-      /* 剥离"毕业于/就读于"前缀，排除"年参加学校"之类误匹配 */
-      school = school.replace(/.*(毕业于|就读于|考入)/, "");
+      /* 剥离"毕业于/就读于/对外联系"等前缀，排除"年参加学校"之类误匹配 */
+      school = school.replace(/.*(毕业于|就读于|考入|对外联系|合作关系)/, "");
       if (/参加|从事|负责|担任|进入|所在/.test(school) || school.length < 4) continue;
       var entry = { school: school, major: "", degree: "", start: "", end: "" };
       var tm = l.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?\s*(?:[-–—~至到]|直到)\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?|至今|现在|今)?/);
@@ -2859,21 +2874,33 @@ document.addEventListener('change',function(e){
           if (ccm2) { company = ccm2[0]; wl = wl + " " + nl2; mergedLa = la; }
           else if (/^(在|于|任职于|就职于|入职|加入)/.test(nl2)) {
             var seg2 = nl2.replace(/^(在|于|任职于|就职于|入职|加入)/, "").split(/[\s|｜,，;；]+/).filter(Boolean)[0] || "";
-            if (seg2.length >= 2 && seg2.length <= 20 && !/^\d+$/.test(seg2)) { company = seg2; wl = wl + " " + nl2; mergedLa = la; }
+            if (seg2 && !/^(至今|现在|今)/.test(seg2) && !/^[（(]/.test(seg2) && seg2.indexOf("个月") < 0 &&
+                seg2.length >= 2 && seg2.length <= 20 && !/^\d+$/.test(seg2)) { company = seg2; wl = wl + " " + nl2; mergedLa = la; }
           }
         }
       }
       var rest = wl.slice(wt.index + wt[0].length);
+      /* 猎聘等平台排版：公司名在时间行的上一行（"XX公司\n2020.05-至今"） */
+      if (!company && wi > 0) {
+        var pline = lines[wi - 1];
+        if (pline && !/\d{4}/.test(pline) && pline.length <= 30 &&
+            /[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/.test(pline)) {
+          var pcm = pline.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
+          if (pcm) { company = pcm[0]; wl = pline + " " + wl; }
+        }
+      }
       if (!company) {
         var seg = rest.split(/[\s|｜,，;；]+/).filter(Boolean)[0] || "";
-        if (seg.length >= 2 && seg.length <= 20 && !/^\d+$/.test(seg)) company = seg;
+        /* 拒绝"至今"、"（1年3个月）"等时长/状态片段 */
+        if (seg && !/^(至今|现在|今)[\s)）]?.*$/.test(seg) && !/^[（(]/.test(seg) && seg.indexOf("个月") < 0 &&
+            seg.length >= 2 && seg.length <= 20 && !/^\d+$/.test(seg)) company = seg;
       }
       /* 公司名清理与校验 */
       if (company) {
         company = company.replace(/^\d{1,4}\s*/, "").replace(/^(在|于|任职于|就职于|入职|加入)/, "").replace(/^(工作经历|教育经历|项目经历|实习经历)/, "");
       }
       if (!company || company.length < 2 || company.indexOf("、") >= 0 || company.indexOf("：") >= 0 || company.indexOf(":") >= 0 ||
-          /^(项目背景|工作内容|项目描述|工作职责|岗位职责|任职要求|招聘工作)/.test(company)) continue;
+          /^(项目背景|工作内容|项目描述|工作职责|岗位职责|任职要求|招聘工作|所在公司|所在部门|汇报对象|下属人数|工作地点)/.test(company)) continue;
       if (companySeen[company]) continue;
       companySeen[company] = 1;
       var wEntry = {
@@ -2893,7 +2920,14 @@ document.addEventListener('change',function(e){
           if (segs[sg] !== company && segs[sg].length >= 2 && segs[sg].length <= 12 && !/^\d+$/.test(segs[sg])) { wEntry.pos = segs[sg]; break; }
         }
       }
-      if (wEntry.pos) wEntry.pos = wEntry.pos.replace(/(内容|职责|描述)[:：]?$/, "").trim();
+      if (wEntry.pos) {
+        wEntry.pos = wEntry.pos.replace(/(内容|职责|描述)[:：]?$/, "")
+          .replace(/[（(][\d\s年月个]+[）)]?$/, "")   /* 去掉尾部"（4年8个月）"时长 */
+          .replace(/^[（(][\d\s年月个]+[）)]?/, "")    /* 去掉头部时长括号 */
+          .replace(/^至今$/, "")
+          .trim();
+        if (wEntry.pos.length < 2) wEntry.pos = "";
+      }
       var desc = [];
       for (var dj = wi + 1 + mergedLa; dj < Math.min(wi + 4 + mergedLa, lines.length); dj++) {
         var dl = lines[dj];
