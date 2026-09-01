@@ -1092,40 +1092,140 @@ document.addEventListener('change',function(e){
   }
 
   /* ========================================================================
-     Word 导出：纯原生 HTML-to-DOC，零依赖
+     Word 导出（.docx，Office Open XML 标准格式）：
+     iOS 预览（QuickLook）只认真正的二进制文档，HTML 伪装的 .doc 会显示
+     "无法打开"；生成真正的 .docx 后 iOS / Mac / 安卓 / Windows 全平台原生支持。
+     纯前端实现：ZIP 打包（STORE 模式）+ WordprocessingML，零依赖
      ======================================================================== */
-  function buildResumeHTML(d) {
-    /* 浅色系配色：全部内联样式（手机端 Word/WPS 对 <style> 类选择器支持差，
-       内联样式渲染最可靠；两列经典表格，移动端可读性最好） */
+  /* CRC32（ZIP 校验） */
+  function crc32(u8) {
+    if (!crc32.table) {
+      var t = [];
+      for (var n = 0; n < 256; n++) {
+        var c = n;
+        for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+      }
+      crc32.table = t;
+    }
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < u8.length; i++) crc = (crc >>> 8) ^ crc32.table[(crc ^ u8[i]) & 0xFF];
+    return (crc ^ 0xFFFFFFFF) >>> 0;
+  }
+  /* ZIP 打包（STORE 模式：只存储不压缩，无需压缩算法） */
+  function makeZip(files) {
+    var enc = new TextEncoder();
+    var parts = [], central = [], offset = 0;
+    files.forEach(function (f) {
+      var nameU = enc.encode(f.name);
+      var crc = crc32(f.data);
+      var lh = new Uint8Array(30 + nameU.length);
+      var dv = new DataView(lh.buffer);
+      dv.setUint32(0, 0x04034b50, true);   // local file header
+      dv.setUint16(4, 20, true);           // version needed
+      dv.setUint16(6, 0x0800, true);       // UTF-8 flag
+      dv.setUint16(8, 0, true);            // method: store
+      dv.setUint32(14, crc, true);
+      dv.setUint32(18, f.data.length, true);
+      dv.setUint32(22, f.data.length, true);
+      dv.setUint16(26, nameU.length, true);
+      lh.set(nameU, 30);
+      parts.push(lh, f.data);
+      central.push({ nameU: nameU, crc: crc, size: f.data.length, off: offset });
+      offset += lh.length + f.data.length;
+    });
+    var cdStart = offset, cdSize = 0;
+    central.forEach(function (c) {
+      var ch = new Uint8Array(46 + c.nameU.length);
+      var dv2 = new DataView(ch.buffer);
+      dv2.setUint32(0, 0x02014b50, true);  // central directory header
+      dv2.setUint16(4, 20, true);
+      dv2.setUint16(6, 20, true);
+      dv2.setUint16(8, 0x0800, true);
+      dv2.setUint32(16, c.crc, true);
+      dv2.setUint32(20, c.size, true);
+      dv2.setUint32(24, c.size, true);
+      dv2.setUint16(28, c.nameU.length, true);
+      dv2.setUint32(42, c.off, true);
+      ch.set(c.nameU, 46);
+      parts.push(ch);
+      cdSize += ch.length;
+    });
+    var eocd = new Uint8Array(22);
+    var edv = new DataView(eocd.buffer);
+    edv.setUint32(0, 0x06054b50, true);    // end of central directory
+    edv.setUint16(8, files.length, true);
+    edv.setUint16(10, files.length, true);
+    edv.setUint32(12, cdSize, true);
+    edv.setUint32(16, cdStart, true);
+    parts.push(eocd);
+    var out = new Uint8Array(offset + cdSize + 22), pos = 0;
+    parts.forEach(function (p) { out.set(p, pos); pos += p.length; });
+    return out;
+  }
+
+  /* ===== WordprocessingML 生成（保持浅色表格设计） ===== */
+  function buildResumeDocx(d) {
+    /* 配色（OOXML 用 6 位 hex，无 #） */
     var C = {
-      ink: "#1e293b", sub: "#64748b", faint: "#cbd5e1",
-      accent: "#0284c7", accentDark: "#0369a1", eHeadInk: "#0c4a6e",
-      lblBg: "#f4f7fa", line: "#dfe7ee", eHeadBg: "#eaf4fd", softBg: "#f8fafc"
+      ink: "1E293B", sub: "64748B", faint: "CBD5E1",
+      accent: "0284C7", accentDark: "0369A1", eHeadInk: "0C4A6E",
+      lblBg: "F4F7FA", line: "DFE7EE", eHeadBg: "EAF4FD", softBg: "F8FAFC"
     };
-    var TD_L = 'style="background:' + C.lblBg + ';color:' + C.sub + ';font-size:9pt;padding:5pt 8pt;border:0.5pt solid ' + C.line + ';width:25%;text-align:center;"';
-    var TD_V = 'style="color:' + C.ink + ';font-size:9.5pt;padding:5pt 9pt;border:0.5pt solid ' + C.line + ';"';
+    function x(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+    /* 文本 run（sz 为半磅：9pt=18） */
+    function run(text, color, sz, bold) {
+      return '<w:r><w:rPr>' + (bold ? "<w:b/>" : "")
+        + '<w:color w:val="' + color + '"/><w:sz w:val="' + sz + '"/><w:szCs w:val="' + sz + '"/>'
+        + '</w:rPr><w:t xml:space="preserve">' + x(text) + '</w:t></w:r>';
+    }
+    /* 段落：center 居中 / line 行距(240=单倍) / spaceBefore/After(twips) */
+    function para(runsXml, opts) {
+      opts = opts || {};
+      var sp = '<w:spacing';
+      if (opts.spaceBefore !== undefined) sp += ' w:before="' + opts.spaceBefore + '"';
+      if (opts.spaceAfter !== undefined) sp += ' w:after="' + opts.spaceAfter + '"';
+      if (opts.line) sp += ' w:line="' + opts.line + '" w:lineRule="auto"';
+      sp += "/>";
+      return '<w:p><w:pPr>' + sp + (opts.center ? '<w:jc w:val="center"/>' : "") + '</w:pPr>' + (runsXml || "") + '</w:p>';
+    }
+    /* 单元格：w 列宽（pct，25%=1250）、span 跨列、fill 底色、bd 边框覆盖 */
+    function tc(runsXml, opts) {
+      opts = opts || {};
+      return '<w:tc><w:tcPr>'
+        + '<w:tcW w:w="' + (opts.w || 3750) + '" w:type="pct"/>'
+        + (opts.span ? '<w:gridSpan w:val="' + opts.span + '"/>' : "")
+        + (opts.fill ? '<w:shd w:val="clear" w:color="auto" w:fill="' + opts.fill + '"/>' : "")
+        + (opts.vAlign ? '<w:vAlign w:val="' + opts.vAlign + '"/>' : "")
+        + (opts.bd || "")
+        + '</w:tcPr>' + (runsXml || '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>') + '</w:tc>';
+    }
+    function tr(cells) { return "<w:tr>" + cells + "</w:tr>"; }
+    var NILBD = '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:right w:val="nil"/><w:bottom w:val="nil"/></w:tcBorders>';
+    var SECTBD = '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:right w:val="nil"/><w:bottom w:val="single" w:sz="12" w:space="0" w:color="' + C.accent + '"/></w:tcBorders>';
 
     function row(label, val) {
       if (!val) return "";
-      return '<tr><td ' + TD_L + '>' + esc(label) + '</td><td ' + TD_V + '>' + esc(val) + '</td></tr>';
+      return tr(tc(para(run(label, C.sub, 18), { center: true }), { w: 1250, fill: C.lblBg, vAlign: "center" })
+              + tc(para(run(val, C.ink, 19)), { vAlign: "center" }));
     }
     function rowMulti(label, val) {
       if (!val) return "";
-      return '<tr><td ' + TD_L + '>' + esc(label) + '</td><td ' + TD_V + '>' + esc(val).replace(/\n/g, "<br/>") + '</td></tr>';
+      var ps = String(val).split("\n").map(function (ln) { return para(run(ln, C.ink, 19)); }).join("");
+      return tr(tc(para(run(label, C.sub, 18), { center: true }), { w: 1250, fill: C.lblBg, vAlign: "center" })
+              + tc(ps, {}));
     }
     /* 分区标题：主色粗体 + 底部主色线 */
     function sect(title) {
-      return '<tr><td colspan="2" style="color:' + C.accentDark + ';font-weight:bold;font-size:11pt;letter-spacing:1pt;padding:11pt 2pt 4pt 2pt;border-bottom:1.5pt solid ' + C.accent + ';">' + esc(title) + '</td></tr>';
+      return tr(tc(para(run(title, C.accentDark, 22, true), { spaceBefore: 200, spaceAfter: 50 }), { w: 5000, span: 2, bd: SECTBD }));
     }
-    /* 条目标题：浅蓝底，名称与时间同行（移动端不用两端对齐） */
+    /* 条目标题：浅蓝底，名称与时间同行 */
     function entryHead(title, right) {
-      var html = '<tr><td colspan="2" style="background:' + C.eHeadBg + ';padding:5pt 9pt;border:0.5pt solid ' + C.line + ';">'
-        + '<span style="color:' + C.eHeadInk + ';font-weight:bold;font-size:10pt;">' + esc(title) + '</span>';
-      if (right) html += '&nbsp;&nbsp;<span style="color:' + C.sub + ';font-size:8.5pt;">' + esc(right) + '</span>';
-      return html + '</td></tr>';
+      var runs = run(title, C.eHeadInk, 20, true) + (right ? run("　" + right, C.sub, 17) : "");
+      return tr(tc(para(runs, { spaceBefore: 40, spaceAfter: 40 }), { w: 5000, span: 2, fill: C.eHeadBg }));
     }
     function gap() {
-      return '<tr><td colspan="2" style="border:none;padding:0;font-size:2pt;line-height:2pt;">&nbsp;</td></tr>';
+      return tr(tc('<w:p><w:pPr><w:spacing w:before="20" w:after="20" w:line="40" w:lineRule="exact"/></w:pPr></w:p>', { w: 5000, span: 2, bd: NILBD }));
     }
 
     /* ===== 头部：姓名 + 摘要 + 联系方式 + 主色粗线 ===== */
@@ -1138,13 +1238,12 @@ document.addEventListener('change',function(e){
     if (d.phone) ctParts.push(d.phone);
     if (d.email) ctParts.push(d.email);
     if (d.currentAddress) ctParts.push(d.currentAddress);
-    var header = '<table style="width:100%;border-collapse:collapse;">'
-      + '<tr><td style="font-size:16pt;font-weight:bold;color:#0f172a;letter-spacing:1pt;padding:0 0 3pt 0;">' + esc(d.name || "—") + '</td></tr>'
-      + (subParts.length ? '<tr><td style="font-size:9pt;color:' + C.sub + ';padding:0 0 2pt 0;">' + esc(subParts.join("　·　")) + '</td></tr>' : "")
-      + (ctParts.length ? '<tr><td style="font-size:9pt;color:' + C.sub + ';padding:0 0 5pt 0;">' + esc(ctParts.join("　·　")) + '</td></tr>' : "")
-      /* 主色粗分隔线：用背景色带实现（比 border-top 在手机 Word 更可靠） */
-      + '<tr><td style="background:' + C.accent + ';font-size:1pt;line-height:3pt;padding:0;">&nbsp;</td></tr>'
-      + '</table>';
+    var header = para(run(d.name || "—", "0F172A", 32, true), { spaceAfter: 60 })
+      + (subParts.length ? para(run(subParts.join("　·　"), C.sub, 18), { spaceAfter: 30 }) : "")
+      + (ctParts.length ? para(run(ctParts.join("　·　"), C.sub, 18), { spaceAfter: 60 }) : "")
+      /* 主色粗分隔线：段落底纹实现 */
+      + '<w:p><w:pPr><w:shd w:val="clear" w:color="auto" w:fill="' + C.accent + '"/>'
+      + '<w:spacing w:before="20" w:after="200" w:line="80" w:lineRule="exact"/></w:pPr></w:p>';
 
     /* ===== 各分区（两列式，移动端逐行清晰） ===== */
     var basicRows =
@@ -1192,16 +1291,30 @@ document.addEventListener('change',function(e){
 
     var commitment =
       sect("信息真实性承诺与授权")
-      + '<tr><td colspan="2" style="background:' + C.softBg + ';color:#475569;font-size:9pt;line-height:1.8;padding:8pt 10pt;border:0.5pt solid ' + C.line + ';">本人郑重承诺：本人确认本表所载各项信息均真实、准确、完整，不存在不实陈述或重大遗漏。本人同意授权本公司及本公司合作的第三方背景调查机构，对本人的任职履历、学历资质、无犯罪记录等信息进行核实（核实前将另行单独取得本人书面授权）。本人承诺入职时按要求提供真实有效的证件及证明文件。如经核实存在虚假信息，本人理解并接受公司可据此不予录用或解除劳动关系，且无须支付任何经济补偿。</td></tr>'
+      + tr(tc(para(run("本人郑重承诺：本人确认本表所载各项信息均真实、准确、完整，不存在不实陈述或重大遗漏。本人同意授权本公司及本公司合作的第三方背景调查机构，对本人的任职履历、学历资质、无犯罪记录等信息进行核实（核实前将另行单独取得本人书面授权）。本人承诺入职时按要求提供真实有效的证件及证明文件。如经核实存在虚假信息，本人理解并接受公司可据此不予录用或解除劳动关系，且无须支付任何经济补偿。", "475569", 18), { line: 340 }), { w: 5000, span: 2, fill: C.softBg }))
       + row("申请人签名", d.signature) + row("签署日期", d.signDate);
 
-    return header
-      + '<table style="width:100%;border-collapse:collapse;">'
+    /* 表格整体属性：100% 宽 + 浅色细边框（0.5pt）+ 单元格内边距 */
+    var tblBorders = ["top", "left", "bottom", "right", "insideH", "insideV"].map(function (s) {
+      return '<w:' + s + ' w:val="single" w:sz="4" w:space="0" w:color="' + C.line + '"/>';
+    }).join("");
+    var tableXml = '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
+      + '<w:tblBorders>' + tblBorders + '</w:tblBorders>'
+      + '<w:tblCellMar><w:top w:w="70" w:type="dxa"/><w:left w:w="130" w:type="dxa"/><w:bottom w:w="70" w:type="dxa"/><w:right w:w="130" w:type="dxa"/></w:tblCellMar>'
+      + '</w:tblPr>'
+      + '<w:tblGrid><w:gridCol w:w="2438"/><w:gridCol w:w="7314"/></w:tblGrid>'
       + sect("基本信息") + basicRows + sect("联系方式") + contactRows
       + sect("教育与求职") + jobRows + eduBlock + workBlock + projBlock
       + sect("技能与其他") + otherRows + commitment
-      + '</table>'
-      + '<table style="width:100%;border-collapse:collapse;"><tr><td style="text-align:center;color:' + C.faint + ';font-size:8pt;padding:12pt 0 0 0;">本简历由候选人信息登记表生成 · ' + todayStr() + '</td></tr></table>';
+      + '</w:tbl>';
+
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+      + '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+      + header + tableXml
+      + para(run("本简历由候选人信息登记表生成 · " + todayStr(), C.faint, 16), { center: true, spaceBefore: 240 })
+      + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
+      + '<w:pgMar w:top="907" w:right="1077" w:bottom="907" w:left="1077" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>'
+      + '</w:body></w:document>';
   }
 
   function exportWord() {
@@ -1229,22 +1342,54 @@ document.addEventListener('change',function(e){
       }, 50);
       return;
     }
-    var content = buildResumeHTML(d);
-    /* 全部样式已内联在 content 里（手机端 Word/WPS 渲染最可靠），
-       这里只保留字体与页边距兜底 */
-    var html =
-      '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
-      + '<head><meta charset="utf-8"><title>个人简历</title>'
-      + '<style>'
-      + '@page{size:A4;margin:1.6cm 1.9cm;}'
-      + 'body{font-family:"PingFang SC","Microsoft YaHei",SimSun,Arial,sans-serif;color:#334155;margin:0;padding:0;}'
-      + 'table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}'
-      + 'p{margin:0;}'
-      + '</style></head><body>' + content + '</body></html>';
-
-    var blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
-    var ok = downloadBlob(blob, (d.name || "候选人") + "_简历.doc");
-    if (ok) showToast("Word 简历已生成");
+    /* 生成真正的 .docx（Office Open XML）：iOS 预览 / Word / WPS / Pages 全平台原生支持 */
+    try {
+      var docXml = buildResumeDocx(d);
+      var enc = new TextEncoder();
+      var zip = makeZip([
+        {
+          name: "[Content_Types].xml",
+          data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            + '<Default Extension="xml" ContentType="application/xml"/>'
+            + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            + '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+            + '</Types>')
+        },
+        {
+          name: "_rels/.rels",
+          data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+            + '</Relationships>')
+        },
+        { name: "word/document.xml", data: enc.encode(docXml) },
+        {
+          name: "word/_rels/document.xml.rels",
+          data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            + '</Relationships>')
+        },
+        {
+          name: "word/styles.xml",
+          data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            + '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            + '<w:docDefaults><w:rPrDefault><w:rPr>'
+            + '<w:rFonts w:ascii="PingFang SC" w:eastAsia="PingFang SC" w:hAnsi="PingFang SC" w:cs="PingFang SC"/>'
+            + '<w:sz w:val="19"/><w:szCs w:val="19"/>'
+            + '</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
+            + '</w:styles>')
+        }
+      ]);
+      var blob = new Blob([zip], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      var ok = downloadBlob(blob, (d.name || "候选人") + "_简历.docx");
+      if (ok) showToast("Word 简历已生成");
+    } catch (e) {
+      console.error(e);
+      showToast("生成失败，请重试");
+    }
   }
 
   /* ========================================================================
@@ -2930,7 +3075,8 @@ document.addEventListener('change',function(e){
     if (!d.name) {
       for (var i = 0; i < Math.min(lines.length, 15); i++) {
         var nm = lines[i].match(/^([\u4e00-\u9fa5·]{2,4})$/);
-        if (nm && isLikelyName(nm[1])) { d.name = nm[1]; break; }
+        /* “小晴”类昵称名：小不在常见姓氏表，特判接受 */
+        if (nm && (isLikelyName(nm[1]) || /^小[\u4e00-\u9fa5]$/.test(nm[1]))) { d.name = nm[1]; break; }
       }
     }
     if (!d.name && lines.length) {
@@ -2943,7 +3089,9 @@ document.addEventListener('change',function(e){
          （推荐报告等排版：姓名前后混有图标噪音，如"加   邓悦彤大mi"） */
       outer:
       for (var ni = 0; ni < Math.min(lines.length, 10); ni++) {
-        var nameSegs = lines[ni].match(/[\u4e00-\u9fa5]{2,4}/g) || [];
+        /* 片段后不能紧跟中文（完整词），避免把"广州派绅健身房"等
+           长机构名截前 3 字误判为姓名 */
+        var nameSegs = lines[ni].match(/[\u4e00-\u9fa5]{2,4}(?![\u4e00-\u9fa5])/g) || [];
         for (var si = 0; si < nameSegs.length; si++) {
           var cand = nameSegs[si];
           /* 片段超 3 字时优先取前 3 字（姓名以 2-3 字最常见，尾部多为噪音） */
@@ -3160,16 +3308,39 @@ document.addEventListener('change',function(e){
       var wl = lines[wi];
       if (!/\d{4}/.test(wl)) continue;
       var wt = wl.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?\s*(?:[-–—~至到]|直到)\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?|至今|现在|今)?/);
-      if (!wt) continue;
+      if (!wt) {
+        /* 平台排版：起始时间单独成行（如"2021.05"），无分隔符匹配不上，
+           结束时间在后续行（"——"+"2022.10" / 直接"2022.10" / "至今"），向下合并 */
+        if (/^\d{4}(\s*[.\/年\-]\s*\d{1,2})?\s*月?$/.test(wl.trim())) {
+          var na0 = (lines[wi + 1] || "").trim(), nb0 = (lines[wi + 2] || "").trim();
+          if (/^[-–—~—]{1,4}$/.test(na0) && nb0 && /\d{4}/.test(nb0)) wl = wl + " - " + nb0;
+          else if (/^\d{4}(\s*[.\/年\-]\s*\d{1,2})?\s*月?$/.test(na0)) wl = wl + " - " + na0;
+          else if (/^(至今|现在|今)$/.test(na0)) wl = wl + " - 至今";
+          else continue;
+          wt = wl.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?\s*(?:[-–—~至到]|直到)\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?|至今|现在|今)?/);
+        }
+        if (!wt) continue;
+      }
       /* 排除单纯的日期（如出生日期 1996-03-11）：要求有结束年份、"至今"，
-         或行尾以分隔符结尾（跨行时间范围，如"2021.07 -"） */
-      if (!(wt[3] || /至今|现在/.test(wl.slice(wt.index)) || /[-–—~至到]\s*$/.test(wl))) continue;
+         或行尾以分隔符结尾（跨行时间范围，如"2021.07 -"）。
+         平台排版时间可能拆成三行（"2021.05" / "——" / "2022.10"），向下合并 */
+      if (!(wt[3] || /至今|现在/.test(wl.slice(wt.index)) || /[-–—~至到]\s*$/.test(wl))) {
+        var na = (lines[wi + 1] || "").trim(), nb = (lines[wi + 2] || "").trim();
+        var endLine = null;
+        if (/^[-–—~—]{1,4}$/.test(na) && nb && /\d{4}/.test(nb)) endLine = nb;
+        else if (/^\d{4}(\s*[.\/年\-]\s*\d{1,2})?\s*月?$/.test(na)) endLine = na;
+        if (!endLine) continue;
+        wl = wl + " - " + endLine;
+        wt = wl.match(/(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?\s*(?:[-–—~至到]|直到)\s*(?:(\d{4})(?:\s*[.\/年\-]\s*(\d{1,2}))?\s*月?|至今|现在|今)?/);
+        if (!wt || !wt[3]) continue;
+      }
       if (/(大学|学院|学校)/.test(wl) && !/(公司|集团|有限|银行|事务所|工作|实习)/.test(wl)) continue;
       var company = "";
       var ccm = wl.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
       if (ccm) company = ccm[0];
       var mergedLa = 0;
       var upPos = "";
+      var downPos = "", looseCompany = "";
       if (!company) {
         /* 平台排版（猎聘等）：公司/职位/时间逐行下排，公司名在时间行上方
            （含中间隔一行职位的情况："XX公司\nhrbp经理\n2024.01-至今"） */
@@ -3186,6 +3357,19 @@ document.addEventListener('change',function(e){
             }
           }
         }
+        /* 机构名不含公司词尾（如"广州派绅健身房\n销售专员\n2021.03-2021.11"）：
+           上两行为短机构名 + 上一行为短职位行时，配对为机构/职位。
+           排除项目名（"倍轻松-撤店项目"）与学历行（"本科·统招"） */
+        if (!company && wi >= 2) {
+          var pl2 = lines[wi - 1], pl1 = lines[wi - 2];
+          if (pl2 && pl1 && !/\d{4}/.test(pl2) && !/\d{4}/.test(pl1) &&
+              pl2.length >= 2 && pl2.length <= 15 && pl1.length >= 3 && pl1.length <= 20 &&
+              !/大学|学院|学校|项目|本科|硕士|博士|大专|专科|统招|学历|工作经历|教育经历|实习经历|个人优势|专业技能|自我评价|资格证书|兴趣爱好|求职意向/.test(pl1) &&
+              !/本科|硕士|博士|大专|专科|统招/.test(pl2)) {
+            company = pl1.trim();
+            upPos = pl2.trim();
+          }
+        }
       }
       if (!company) {
         /* 时间行本身无公司名：向后看几行找（换行排版，如"2021.07-\n至今\n在XX公司..."） */
@@ -3193,19 +3377,36 @@ document.addEventListener('change',function(e){
           var nl2 = lines[wi + la];
           if (!nl2 || (/\d{4}/.test(nl2) && /[-–—~至到]/.test(nl2))) break;
           if (nl2.length > 30) break; /* 长行是正文描述而非公司行 */
+          var joined = false;
+          /* 括号跨行（"自主独立摄影（" + "零千摄影）"）：与下一行拼接 */
+          if (/[（(]\s*$/.test(nl2) && lines[wi + la + 1]) { nl2 = nl2.trim() + (lines[wi + la + 1] || "").trim(); joined = true; }
           if (/^(至今|现在|今)$/.test(nl2)) { wl = wl + " " + nl2; mergedLa = la; continue; }
           if (eduDegreeRe.test(nl2)) continue;
           if (/(大学|学院|学校)/.test(nl2) && !/(公司|工作|实习|集团)/.test(nl2)) continue;
           var ccm2 = nl2.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
-          if (ccm2) { company = ccm2[0]; wl = wl + " " + nl2; mergedLa = la; }
-          else if (/^(在|于|任职于|就职于|入职|加入)/.test(nl2)) {
+          if (ccm2) {
+            company = ccm2[0]; wl = wl + " " + nl2; mergedLa = la + (joined ? 1 : 0);
+            /* 公司行的下一行常是职位行（如"总部驻店摄影师•"）；含标点的是描述文本 */
+            var pAfter = (lines[wi + la + (joined ? 2 : 1)] || "").trim();
+            if (pAfter && pAfter.length <= 20 && !/\d{4}/.test(pAfter) && !/[，。！？；;]/.test(pAfter)) downPos = pAfter;
+          } else if (/^(在|于|任职于|就职于|入职|加入)/.test(nl2)) {
             var seg2 = nl2.replace(/^(在|于|任职于|就职于|入职|加入)/, "").split(/[\s|｜,，;；]+/).filter(Boolean)[0] || "";
             if (seg2 && !/^(至今|现在|今)/.test(seg2) && !/^[（(]/.test(seg2) && seg2.indexOf("个月") < 0 &&
                 seg2.length >= 2 && seg2.length <= 20 && !/^\d+$/.test(seg2)) { company = seg2; wl = wl + " " + nl2; mergedLa = la; }
+          } else if (!looseCompany && la === 1 && nl2.length >= 3 && nl2.length <= 20 && !/[，。！？；;]/.test(nl2) && !/项目/.test(nl2)) {
+            /* 无公司词尾的机构名（如"自主独立摄影（零千摄影）"）：
+               下一行须为职位样短行（"负责人"等）才认定为机构名 */
+            var pa2 = (lines[wi + la + (joined ? 2 : 1)] || "").trim();
+            if (pa2 && pa2.length <= 12 && /(负责人|经理|主管|专员|设计师|摄影师|助理|顾问|老师|工程师|店长|销售|员工|学徒)/.test(pa2)) {
+              looseCompany = nl2.trim();
+              downPos = pa2;
+              mergedLa = la + (joined ? 1 : 0);
+            }
           }
         }
       }
       var rest = wl.slice(wt.index + wt[0].length);
+      if (!company && looseCompany) company = looseCompany;
       if (!company) {
         var seg = rest.split(/[\s|｜,，;；]+/).filter(Boolean)[0] || "";
         /* 拒绝"至今"、"（1年3个月）"等时长/状态片段 */
@@ -3217,6 +3418,7 @@ document.addEventListener('change',function(e){
         company = company.replace(/^\d{1,4}\s*/, "").replace(/^(在|于|任职于|就职于|入职|加入)/, "").replace(/^(工作经历|教育经历|项目经历|实习经历)/, "");
       }
       if (!company || company.length < 2 || company.indexOf("、") >= 0 || company.indexOf("：") >= 0 || company.indexOf(":") >= 0 ||
+          /^(并|及|以及|与|和|或)[^，。]{0,4}(公司|团队|部门)/.test(company) ||
           /^(项目背景|工作内容|项目描述|工作职责|岗位职责|任职要求|招聘工作|所在公司|所在部门|汇报对象|下属人数|工作地点)/.test(company)) continue;
       if (companySeen[company]) continue;
       companySeen[company] = 1;
@@ -3247,7 +3449,12 @@ document.addEventListener('change',function(e){
       }
       /* 平台排版：公司行与时间行之间的独立职位行（如"hrbp经理"） */
       if (!wEntry.pos && upPos) {
-        wEntry.pos = upPos.replace(/(内容|职责|描述)[:：]?$/, "").trim();
+        wEntry.pos = upPos.replace(/[•·]\s*$/, "").replace(/(内容|职责|描述)[:：]?$/, "").trim();
+        if (wEntry.pos.length < 2 || /^\d/.test(wEntry.pos)) wEntry.pos = "";
+      }
+      /* 平台排版：公司行下方的独立职位行（如"总部驻店摄影师•"） */
+      if (!wEntry.pos && downPos) {
+        wEntry.pos = downPos.replace(/[•·]\s*$/, "").replace(/(内容|职责|描述)[:：]?$/, "").trim();
         if (wEntry.pos.length < 2 || /^\d/.test(wEntry.pos)) wEntry.pos = "";
       }
       var desc = [];
