@@ -1095,31 +1095,40 @@ document.addEventListener('change',function(e){
      Word 导出：纯原生 HTML-to-DOC，零依赖
      ======================================================================== */
   function buildResumeHTML(d) {
-    function v2(s) { return s ? esc(s) : ""; }
-    /* 双列键值行（紧凑排版） */
-    function row2(l1, v1, l2, v2v) {
-      if (l2 && v2v) {
-        return '<tr><td class="lbl">' + esc(l1) + '</td><td class="val">' + v2(v1) + '</td>'
-             + '<td class="lbl">' + esc(l2) + '</td><td class="val">' + v2(v2v) + '</td></tr>';
-      }
-      return '<tr><td class="lbl">' + esc(l1) + '</td><td class="val" colspan="3">' + v2(v1) + '</td></tr>';
+    /* 浅色系配色：全部内联样式（手机端 Word/WPS 对 <style> 类选择器支持差，
+       内联样式渲染最可靠；两列经典表格，移动端可读性最好） */
+    var C = {
+      ink: "#1e293b", sub: "#64748b", faint: "#cbd5e1",
+      accent: "#0284c7", accentDark: "#0369a1", eHeadInk: "#0c4a6e",
+      lblBg: "#f4f7fa", line: "#dfe7ee", eHeadBg: "#eaf4fd", softBg: "#f8fafc"
+    };
+    var TD_L = 'style="background:' + C.lblBg + ';color:' + C.sub + ';font-size:9pt;padding:5pt 8pt;border:0.5pt solid ' + C.line + ';width:25%;text-align:center;"';
+    var TD_V = 'style="color:' + C.ink + ';font-size:9.5pt;padding:5pt 9pt;border:0.5pt solid ' + C.line + ';"';
+
+    function row(label, val) {
+      if (!val) return "";
+      return '<tr><td ' + TD_L + '>' + esc(label) + '</td><td ' + TD_V + '>' + esc(val) + '</td></tr>';
     }
-    /* 跨列多行文本 */
     function rowMulti(label, val) {
       if (!val) return "";
-      return '<tr><td class="lbl">' + esc(label) + '</td><td class="val multi" colspan="3">' + esc(val).replace(/\n/g, "<br/>") + '</td></tr>';
+      return '<tr><td ' + TD_L + '>' + esc(label) + '</td><td ' + TD_V + '>' + esc(val).replace(/\n/g, "<br/>") + '</td></tr>';
     }
-    /* 分区标题 */
+    /* 分区标题：主色粗体 + 底部主色线 */
     function sect(title) {
-      return '<tr><td colspan="4" class="sect">' + esc(title) + '</td></tr>';
+      return '<tr><td colspan="2" style="color:' + C.accentDark + ';font-weight:bold;font-size:11pt;letter-spacing:1pt;padding:11pt 2pt 4pt 2pt;border-bottom:1.5pt solid ' + C.accent + ';">' + esc(title) + '</td></tr>';
     }
-    /* 条目标题（左：名称，右：时间） */
+    /* 条目标题：浅蓝底，名称与时间同行（移动端不用两端对齐） */
     function entryHead(title, right) {
-      return '<tr><td colspan="2" class="ehead-l">' + esc(title) + '</td><td colspan="2" class="ehead-r">' + esc(right || "") + '</td></tr>';
+      var html = '<tr><td colspan="2" style="background:' + C.eHeadBg + ';padding:5pt 9pt;border:0.5pt solid ' + C.line + ';">'
+        + '<span style="color:' + C.eHeadInk + ';font-weight:bold;font-size:10pt;">' + esc(title) + '</span>';
+      if (right) html += '&nbsp;&nbsp;<span style="color:' + C.sub + ';font-size:8.5pt;">' + esc(right) + '</span>';
+      return html + '</td></tr>';
     }
-    function entryGap() { return '<tr><td colspan="4" class="gap"></td></tr>'; }
+    function gap() {
+      return '<tr><td colspan="2" style="border:none;padding:0;font-size:2pt;line-height:2pt;">&nbsp;</td></tr>';
+    }
 
-    /* ===== 头部：姓名 + 摘要 + 联系方式 ===== */
+    /* ===== 头部：姓名 + 摘要 + 联系方式 + 主色粗线 ===== */
     var subParts = [];
     if (d.gender) subParts.push(d.gender);
     if (d.birth) subParts.push(d.birth);
@@ -1129,67 +1138,70 @@ document.addEventListener('change',function(e){
     if (d.phone) ctParts.push(d.phone);
     if (d.email) ctParts.push(d.email);
     if (d.currentAddress) ctParts.push(d.currentAddress);
-    var header = '<table class="hd">'
-      + '<tr><td class="hd-name">' + esc(d.name || "—") + '</td></tr>'
-      + (subParts.length ? '<tr><td class="hd-sub">' + esc(subParts.join("　·　")) + '</td></tr>' : "")
-      + (ctParts.length ? '<tr><td class="hd-ct">' + esc(ctParts.join("　·　")) + '</td></tr>' : "")
-      + '</table>'
-      + '<table class="hdline"><tr><td>&nbsp;</td></tr></table>';
+    var header = '<table style="width:100%;border-collapse:collapse;">'
+      + '<tr><td style="font-size:16pt;font-weight:bold;color:#0f172a;letter-spacing:1pt;padding:0 0 3pt 0;">' + esc(d.name || "—") + '</td></tr>'
+      + (subParts.length ? '<tr><td style="font-size:9pt;color:' + C.sub + ';padding:0 0 2pt 0;">' + esc(subParts.join("　·　")) + '</td></tr>' : "")
+      + (ctParts.length ? '<tr><td style="font-size:9pt;color:' + C.sub + ';padding:0 0 5pt 0;">' + esc(ctParts.join("　·　")) + '</td></tr>' : "")
+      /* 主色粗分隔线：用背景色带实现（比 border-top 在手机 Word 更可靠） */
+      + '<tr><td style="background:' + C.accent + ';font-size:1pt;line-height:3pt;padding:0;">&nbsp;</td></tr>'
+      + '</table>';
 
-    /* ===== 各分区 ===== */
+    /* ===== 各分区（两列式，移动端逐行清晰） ===== */
     var basicRows =
-      row2("姓名", d.name, "性别", d.gender) +
-      row2("出生年月", d.birth, "身高", d.height ? d.height + " cm" : "") +
-      row2("体重", d.weight ? d.weight + " kg" : "", "婚姻状态", d.marital) +
-      row2("政治面貌", d.political, "籍贯", d.nativePlace) +
-      row2("现居地", d.currentAddress);
+      row("姓名", d.name) + row("性别", d.gender) + row("出生年月", d.birth) +
+      row("身高", d.height ? d.height + " cm" : "") + row("体重", d.weight ? d.weight + " kg" : "") +
+      row("婚姻状态", d.marital) + row("政治面貌", d.political) + row("籍贯", d.nativePlace) +
+      row("现居地", d.currentAddress);
 
     var contactRows =
-      row2("手机号码", d.phone, "电子邮箱", d.email) +
-      (d.emergencyName ? row2("紧急联系人", d.emergencyRelation ? d.emergencyName + "（" + d.emergencyRelation + "）" : d.emergencyName, "紧急电话", d.emergencyPhone) : "");
+      row("手机号码", d.phone) + row("电子邮箱", d.email) +
+      (d.emergencyName ? row("紧急联系人", d.emergencyRelation ? d.emergencyName + "（" + d.emergencyRelation + "）" : d.emergencyName) : "") +
+      row("紧急电话", d.emergencyPhone);
 
     var jobRows =
-      row2("最高学历", d.education, "工作年限", d.expYears ? d.expYears + " 年" : "") +
-      row2("面试岗位", d.position, "期望薪资", d.salary) +
-      row2("招聘渠道", d.channel, "推荐人", d.channel === "内部推荐" ? d.referrerName : "") +
-      row2("亲属任职声明", d.hasRelative, "姓名及部门", d.hasRelative === "有" ? d.relativeDetail : "");
+      row("最高学历", d.education) + row("工作年限", d.expYears ? d.expYears + " 年" : "") +
+      row("面试岗位", d.position) + row("期望薪资", d.salary) +
+      row("招聘渠道", d.channel) +
+      (d.channel === "内部推荐" ? row("推荐人", d.referrerName) : "") +
+      row("亲属任职声明", d.hasRelative) +
+      (d.hasRelative === "有" ? row("姓名及部门", d.relativeDetail) : "");
 
     var eduInner = (d.edu || []).map(function (e) {
       return entryHead((e.school || "—") + (e.degree ? "　·　" + e.degree : ""), fmtRange(e.start, e.end)) +
-             row2("专业", e.major);
-    }).join(entryGap());
+             row("专业", e.major);
+    }).join(gap());
     var eduBlock = eduInner ? sect("教育经历") + eduInner : "";
 
     var workInner = (d.work || []).map(function (e) {
       return entryHead((e.company || "—") + (e.pos ? "　·　" + e.pos : ""), fmtRange(e.start, e.end)) +
-             row2("月薪", e.salary, "离职原因", e.reason) +
+             row("月薪", e.salary) + row("离职原因", e.reason) +
              rowMulti("工作内容", e.desc);
-    }).join(entryGap());
+    }).join(gap());
     var workBlock = workInner ? sect("工作经历") + workInner : "";
 
     var projInner = (d.proj || []).map(function (e) {
       return entryHead((e.name || "—") + (e.role ? "　·　" + e.role : ""), fmtRange(e.start, e.end)) +
              rowMulti("项目描述", e.desc);
-    }).join(entryGap());
+    }).join(gap());
     var projBlock = projInner ? sect("项目经历") + projInner : "";
 
     var otherRows =
-      rowMulti("专业技能", d.skills) +
-      row2("语言能力", d.language, "证书与荣誉", d.certs) +
-      row2("兴趣爱好", d.hobby) +
+      rowMulti("专业技能", d.skills) + row("语言能力", d.language) +
+      row("证书与荣誉", d.certs) + row("兴趣爱好", d.hobby) +
       rowMulti("自我评价", d.selfEval);
 
     var commitment =
       sect("信息真实性承诺与授权")
-      + '<tr><td colspan="4" class="promise">本人郑重承诺：本人确认本表所载各项信息均真实、准确、完整，不存在不实陈述或重大遗漏。本人同意授权本公司及本公司合作的第三方背景调查机构，对本人的任职履历、学历资质、无犯罪记录等信息进行核实（核实前将另行单独取得本人书面授权）。本人承诺入职时按要求提供真实有效的证件及证明文件。如经核实存在虚假信息，本人理解并接受公司可据此不予录用或解除劳动关系，且无须支付任何经济补偿。</td></tr>'
-      + row2("申请人签名", d.signature, "签署日期", d.signDate);
+      + '<tr><td colspan="2" style="background:' + C.softBg + ';color:#475569;font-size:9pt;line-height:1.8;padding:8pt 10pt;border:0.5pt solid ' + C.line + ';">本人郑重承诺：本人确认本表所载各项信息均真实、准确、完整，不存在不实陈述或重大遗漏。本人同意授权本公司及本公司合作的第三方背景调查机构，对本人的任职履历、学历资质、无犯罪记录等信息进行核实（核实前将另行单独取得本人书面授权）。本人承诺入职时按要求提供真实有效的证件及证明文件。如经核实存在虚假信息，本人理解并接受公司可据此不予录用或解除劳动关系，且无须支付任何经济补偿。</td></tr>'
+      + row("申请人签名", d.signature) + row("签署日期", d.signDate);
 
-    return '<div class="page">' + header
-      + '<table class="kv"><colgroup><col style="width:80pt"/><col /><col style="width:80pt"/><col /></colgroup>'
+    return header
+      + '<table style="width:100%;border-collapse:collapse;">'
       + sect("基本信息") + basicRows + sect("联系方式") + contactRows
       + sect("教育与求职") + jobRows + eduBlock + workBlock + projBlock
       + sect("技能与其他") + otherRows + commitment
-      + '</table><div class="footer">本简历由候选人信息登记表生成 · ' + todayStr() + '</div></div>';
+      + '</table>'
+      + '<table style="width:100%;border-collapse:collapse;"><tr><td style="text-align:center;color:' + C.faint + ';font-size:8pt;padding:12pt 0 0 0;">本简历由候选人信息登记表生成 · ' + todayStr() + '</td></tr></table>';
   }
 
   function exportWord() {
@@ -1218,38 +1230,16 @@ document.addEventListener('change',function(e){
       return;
     }
     var content = buildResumeHTML(d);
+    /* 全部样式已内联在 content 里（手机端 Word/WPS 渲染最可靠），
+       这里只保留字体与页边距兜底 */
     var html =
       '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">'
       + '<head><meta charset="utf-8"><title>个人简历</title>'
       + '<style>'
       + '@page{size:A4;margin:1.6cm 1.9cm;}'
-      + 'body{font-family:"PingFang SC","Microsoft YaHei",SimSun,Arial,sans-serif;color:#334155;margin:0;padding:0;background:#ffffff;}'
-      + '.page{width:100%;margin:0 auto;}'
-      /* 表格通用：去 Word 默认间距 */
-      + 'table{width:100%;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}'
-      /* ===== 头部（对齐 PDF：大姓名 + 灰摘要 + 主色粗线） ===== */
-      + 'table.hd{margin:0 0 4pt 0;}'
-      + 'table.hd td{border:none;padding:0;background:#ffffff;line-height:1.3;}'
-      + 'td.hd-name{font-size:18pt;font-weight:bold;color:#0f172a;letter-spacing:1pt;padding:0 0 4pt 0;}'
-      + 'td.hd-sub{font-size:9pt;color:#64748b;padding:0 0 2pt 0;}'
-      + 'td.hd-ct{font-size:9pt;color:#64748b;padding:0 0 2pt 0;}'
-      + 'table.hdline{margin:3pt 0 8pt 0;}'
-      + 'table.hdline td{border:none;border-top:2.25pt solid #0284c7;background:#ffffff;padding:0;font-size:1pt;line-height:1pt;}'
-      /* ===== 键值表格：定宽列 + 底部极浅线（字号对齐 PDF 9.5pt） ===== */
-      + 'table.kv{table-layout:fixed;font-size:9.5pt;}'
-      + '.kv td{border:none;border-bottom:0.5pt solid #e8edf3;padding:4.5pt 8pt;vertical-align:top;line-height:1.5;background:#ffffff;}'
-      + '.kv td.lbl{width:80pt;background:#f4f7fa;color:#64748b;font-size:9pt;text-align:left;}'
-      + '.kv td.val{color:#1e293b;}'
-      + '.kv td.val.multi{line-height:1.6;white-space:pre-wrap;}'
-      /* ===== 分区标题：主色粗体 + 底部主色线（对齐 PDF） ===== */
-      + '.kv td.sect{border-bottom:1.25pt solid #0284c7;color:#0369a1;font-weight:bold;font-size:11pt;letter-spacing:1.5pt;padding:9pt 0 3.5pt 0;background:#ffffff;}'
-      /* ===== 条目标题：浅蓝底（对齐 PDF #f0f9ff） ===== */
-      + '.kv td.ehead-l{background:#eaf4fd;color:#0c4a6e;font-weight:bold;font-size:10pt;border-bottom:none;padding:4pt 8pt;}'
-      + '.kv td.ehead-r{background:#eaf4fd;color:#64748b;font-size:9pt;text-align:right;border-bottom:none;padding:4pt 8pt;}'
-      + '.kv td.gap{border:none;background:#ffffff;padding:2.5pt 0;font-size:2pt;line-height:2pt;}'
-      /* ===== 承诺块（对齐 PDF 浅灰底段落） ===== */
-      + '.kv td.promise{background:#f4f7fa;color:#475569;font-size:9pt;line-height:1.7;padding:7pt 10pt;border-bottom:none;text-indent:2em;}'
-      + '.footer{margin-top:14pt;text-align:center;color:#cbd5e1;font-size:8pt;}'
+      + 'body{font-family:"PingFang SC","Microsoft YaHei",SimSun,Arial,sans-serif;color:#334155;margin:0;padding:0;}'
+      + 'table{border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}'
+      + 'p{margin:0;}'
       + '</style></head><body>' + content + '</body></html>';
 
     var blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
@@ -1372,7 +1362,11 @@ document.addEventListener('change',function(e){
       setFont(fs, "normal");
       ctx.fillStyle = CLR.sub;
       var ly = top + (rowH - labelLines.length * lh) / 2 + fs;
-      for (var i = 0; i < labelLines.length; i++) { ctx.fillText(labelLines[i], x + 7, ly + 1); ly += lh; }
+      for (var i = 0; i < labelLines.length; i++) {
+        // 标签在标签列内水平居中
+        var ltw = ctx.measureText(labelLines[i]).width;
+        ctx.fillText(labelLines[i], x + (LABEL_W - ltw) / 2, ly + 1); ly += lh;
+      }
       setFont(fs, "normal");
       ctx.fillStyle = CLR.ink;
       var n = Math.max(1, valLines.length);
@@ -1434,7 +1428,9 @@ document.addEventListener('change',function(e){
       var labelLH = fontSize + 5;
       var labelY = rowTop + (rowH - labelLines.length * labelLH) / 2 + fontSize;
       for (var li = 0; li < labelLines.length; li++) {
-        ctx.fillText(labelLines[li], MARGIN + 7, labelY + 1);
+        // 标签在标签列内水平居中
+        var ltw = ctx.measureText(labelLines[li]).width;
+        ctx.fillText(labelLines[li], MARGIN + (LABEL_W - ltw) / 2, labelY + 1);
         labelY += labelLH;
       }
       // 值文字
