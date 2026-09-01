@@ -1129,12 +1129,12 @@ document.addEventListener('change',function(e){
     if (d.phone) ctParts.push(d.phone);
     if (d.email) ctParts.push(d.email);
     if (d.currentAddress) ctParts.push(d.currentAddress);
-    var header = '<table class="hd"><tr><td>'
-      + '<div class="hd-name">' + esc(d.name || "—") + '</div>'
-      + (subParts.length ? '<div class="hd-sub">' + esc(subParts.join("　·　")) + '</div>' : "")
-      + (ctParts.length ? '<div class="hd-ct">' + esc(ctParts.join("　·　")) + '</div>' : "")
-      + '</td></tr></table>'
-      + '<table class="hdline"><tr><td></td></tr></table>';
+    var header = '<table class="hd">'
+      + '<tr><td class="hd-name">' + esc(d.name || "—") + '</td></tr>'
+      + (subParts.length ? '<tr><td class="hd-sub">' + esc(subParts.join("　·　")) + '</td></tr>' : "")
+      + (ctParts.length ? '<tr><td class="hd-ct">' + esc(ctParts.join("　·　")) + '</td></tr>' : "")
+      + '</table>'
+      + '<table class="hdline"><tr><td>&nbsp;</td></tr></table>';
 
     /* ===== 各分区 ===== */
     var basicRows =
@@ -1185,7 +1185,8 @@ document.addEventListener('change',function(e){
       + row2("申请人签名", d.signature, "签署日期", d.signDate);
 
     return '<div class="page">' + header
-      + '<table class="kv">' + sect("基本信息") + basicRows + sect("联系方式") + contactRows
+      + '<table class="kv"><colgroup><col style="width:80pt"/><col /><col style="width:80pt"/><col /></colgroup>'
+      + sect("基本信息") + basicRows + sect("联系方式") + contactRows
       + sect("教育与求职") + jobRows + eduBlock + workBlock + projBlock
       + sect("技能与其他") + otherRows + commitment
       + '</table><div class="footer">本简历由候选人信息登记表生成 · ' + todayStr() + '</div></div>';
@@ -1224,29 +1225,31 @@ document.addEventListener('change',function(e){
       + '@page{size:A4;margin:1.6cm 1.9cm;}'
       + 'body{font-family:"PingFang SC","Microsoft YaHei",SimSun,Arial,sans-serif;color:#334155;margin:0;padding:0;background:#ffffff;}'
       + '.page{width:100%;margin:0 auto;}'
-      /* 头部 */
-      + 'table.hd{width:100%;border-collapse:collapse;margin-bottom:10px;}'
-      + 'table.hd td{border:none;padding:0;background:#ffffff;}'
-      + '.hd-name{font-size:24px;font-weight:bold;color:#0f172a;letter-spacing:1px;line-height:1.3;}'
-      + '.hd-sub{font-size:10.5px;color:#64748b;margin-top:5px;line-height:1.5;}'
-      + '.hd-ct{font-size:10.5px;color:#64748b;margin-top:2px;line-height:1.5;}'
-      + 'table.hdline{width:100%;border-collapse:collapse;margin:0 0 16px;}'
-      + 'table.hdline td{border:none;border-top:2.5px solid #0284c7;background:#ffffff;padding:0;height:1px;}'
-      /* 键值表格：无边框 + 底部极浅线 */
-      + 'table.kv{width:100%;border-collapse:collapse;font-size:10.5pt;}'
-      + 'table.kv td{border:none;border-bottom:0.75px solid #eef2f7;padding:6px 10px;vertical-align:top;line-height:1.65;background:#ffffff;}'
-      + 'td.lbl{width:88px;background:#f8fafc !important;color:#64748b;font-size:9.5pt;text-align:right;border-right:none;}'
-      + 'td.val{color:#1e293b;}'
-      + 'td.val.multi{line-height:1.7;white-space:pre-wrap;}'
-      /* 分区标题：主色 + 底部主色细线 */
-      + 'td.sect{border:none !important;border-bottom:1.5px solid #0284c7 !important;color:#0369a1;font-weight:bold;font-size:12pt;padding:14px 0 5px !important;letter-spacing:2px;background:#ffffff !important;}'
-      /* 条目标题：浅蓝底 */
-      + 'td.ehead-l{background:#f0f9ff !important;color:#0c4a6e;font-weight:bold;font-size:10.5pt;border-bottom:none !important;padding:6px 10px !important;}'
-      + 'td.ehead-r{background:#f0f9ff !important;color:#64748b;font-size:9.5pt;text-align:right;border-bottom:none !important;padding:6px 10px !important;}'
-      + 'td.gap{border:none !important;background:#ffffff !important;height:8px;padding:0 !important;}'
-      /* 承诺块 */
-      + 'td.promise{background:#f8fafc !important;color:#475569;font-size:9.5pt;line-height:1.9;padding:10px 14px !important;border-bottom:none !important;text-indent:2em;}'
-      + '.footer{margin-top:18px;text-align:center;color:#cbd5e1;font-size:8.5pt;}'
+      /* 表格通用：去 Word 默认间距 */
+      + 'table{width:100%;border-collapse:collapse;mso-table-lspace:0pt;mso-table-rspace:0pt;}'
+      /* ===== 头部（对齐 PDF：大姓名 + 灰摘要 + 主色粗线） ===== */
+      + 'table.hd{margin:0 0 4pt 0;}'
+      + 'table.hd td{border:none;padding:0;background:#ffffff;line-height:1.3;}'
+      + 'td.hd-name{font-size:18pt;font-weight:bold;color:#0f172a;letter-spacing:1pt;padding:0 0 4pt 0;}'
+      + 'td.hd-sub{font-size:9pt;color:#64748b;padding:0 0 2pt 0;}'
+      + 'td.hd-ct{font-size:9pt;color:#64748b;padding:0 0 2pt 0;}'
+      + 'table.hdline{margin:3pt 0 8pt 0;}'
+      + 'table.hdline td{border:none;border-top:2.25pt solid #0284c7;background:#ffffff;padding:0;font-size:1pt;line-height:1pt;}'
+      /* ===== 键值表格：定宽列 + 底部极浅线（字号对齐 PDF 9.5pt） ===== */
+      + 'table.kv{table-layout:fixed;font-size:9.5pt;}'
+      + '.kv td{border:none;border-bottom:0.5pt solid #e8edf3;padding:4.5pt 8pt;vertical-align:top;line-height:1.5;background:#ffffff;}'
+      + '.kv td.lbl{width:80pt;background:#f4f7fa;color:#64748b;font-size:9pt;text-align:left;}'
+      + '.kv td.val{color:#1e293b;}'
+      + '.kv td.val.multi{line-height:1.6;white-space:pre-wrap;}'
+      /* ===== 分区标题：主色粗体 + 底部主色线（对齐 PDF） ===== */
+      + '.kv td.sect{border-bottom:1.25pt solid #0284c7;color:#0369a1;font-weight:bold;font-size:11pt;letter-spacing:1.5pt;padding:9pt 0 3.5pt 0;background:#ffffff;}'
+      /* ===== 条目标题：浅蓝底（对齐 PDF #f0f9ff） ===== */
+      + '.kv td.ehead-l{background:#eaf4fd;color:#0c4a6e;font-weight:bold;font-size:10pt;border-bottom:none;padding:4pt 8pt;}'
+      + '.kv td.ehead-r{background:#eaf4fd;color:#64748b;font-size:9pt;text-align:right;border-bottom:none;padding:4pt 8pt;}'
+      + '.kv td.gap{border:none;background:#ffffff;padding:2.5pt 0;font-size:2pt;line-height:2pt;}'
+      /* ===== 承诺块（对齐 PDF 浅灰底段落） ===== */
+      + '.kv td.promise{background:#f4f7fa;color:#475569;font-size:9pt;line-height:1.7;padding:7pt 10pt;border-bottom:none;text-indent:2em;}'
+      + '.footer{margin-top:14pt;text-align:center;color:#cbd5e1;font-size:8pt;}'
       + '</style></head><body>' + content + '</body></html>';
 
     var blob = new Blob(["\ufeff", html], { type: "application/msword;charset=utf-8" });
