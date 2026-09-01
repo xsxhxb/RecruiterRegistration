@@ -2379,14 +2379,36 @@ document.addEventListener('change',function(e){
     var out = "", line = "";
     var i = 0, n = content.length;
     var curFont = null;
-    function flush() { out += line + "\n"; line = ""; }
+    /* 文本坐标跟踪：猎聘等平台 PDF 每个单元格用独立 Tm 绝对定位，
+       Y 变化=换行，X 大跳/回退=同行空格分隔（模拟视觉布局） */
+    var curX = null, curY = null, curSize = 10;
+    function flush() { if (line) { out += line + "\n"; line = ""; } }
+    function moveTo(nx, ny) {
+      if (curY !== null && Math.abs(ny - curY) > 1.5) {
+        flush();
+      } else if (line && curX !== null && (nx - curX > Math.max(curSize * 1.6, 8) || nx < curX - 2)) {
+        line += " ";
+      }
+      curX = nx; curY = ny;
+    }
     while (i < n) {
       var c = content.charAt(i);
+      /* 文本矩阵：a b c d e f Tm —— e,f 为绝对坐标 */
+      var tmm = content.substr(i).match(/^([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+Tm\b/);
+      if (tmm) { moveTo(+tmm[5], +tmm[6]); i += tmm[0].length; continue; }
+      /* 相对移动：tx ty Td / TD */
+      var tdm = content.substr(i).match(/^([-\d.]+)\s+([-\d.]+)\s+(Td|TD)\b/);
+      if (tdm) {
+        if (curX !== null) moveTo(curX + +tdm[1], curY + +tdm[2]);
+        else moveTo(+tdm[1], +tdm[2]);
+        i += tdm[0].length; continue;
+      }
       if (c === "/") {
         /* 字体切换操作符：/F1 12 Tf —— 后续文本用该字体的 ToUnicode 映射解码 */
-        var tfm = content.substr(i).match(/^\/([^\s\/\[\]<>()]+)\s+[-\d.]+\s+Tf\b/);
+        var tfm = content.substr(i).match(/^\/([^\s\/\[\]<>()]+)\s+([-\d.]+)\s+Tf\b/);
         if (tfm) {
           curFont = (pageFonts && pageFonts[tfm[1]]) || null;
+          if (+tfm[2] > 0) curSize = +tfm[2];
           i += tfm[0].length;
           continue;
         }
@@ -2441,23 +2463,56 @@ document.addEventListener('change',function(e){
         continue;
       }
       var two = content.substr(i, 2);
-      if (two === "Td" || two === "TD" || two === "T*" || two === "BT" || two === "ET") {
-        var nx = content.charAt(i + 2) || " ";
-        if (!/[A-Za-z]/.test(nx) || two === "T*") { flush(); i += 2; continue; }
-      }
+      if (two === "BT") { flush(); curX = null; curY = null; curFont = null; i += 2; continue; }
+      if (two === "ET" || two === "T*") { flush(); i += 2; continue; }
       i++;
     }
-    out += line;
+    flush();
     return out;
   }
 
+  /* 水印/追踪码乱码：长 [0-9A-Za-z_-] 连续串且含重复子串
+     （如 91f2f61765d121361Hx72dW... 整段重复多次）。
+     token 可能与正文拼在同一行，需从行内剔除而非仅判整行 */
+  function hasRepeatSub(tok) {
+    for (var len = 8; len <= 20 && len * 2 <= tok.length; len++) {
+      var seen = {};
+      for (var p = 0; p + len <= tok.length; p++) {
+        var sub = tok.substr(p, len);
+        if (seen[sub]) return true;
+        seen[sub] = 1;
+      }
+    }
+    return false;
+  }
+  function stripGarbage(l, tokCount) {
+    if (l.length < 24) return l;
+    return l.replace(/[0-9A-Za-z_\-]{24,}/g, function (tok) {
+      if (hasRepeatSub(tok)) return "";
+      /* 跨行重复出现 ≥2 次的长 token：水印/追踪码 */
+      if (tokCount && (tokCount[tok] || 0) >= 2) return "";
+      return tok;
+    }).replace(/\s{2,}/g, " ").trim();
+  }
+
   function mergeFragments(text) {
-    var lines = text.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+    var rawLines = text.split("\n").map(function (s) { return s.trim(); }).filter(Boolean);
+    /* 统计长 token 跨行出现次数，用于识别重复水印 */
+    var tokCount = {};
+    rawLines.forEach(function (l) {
+      (l.match(/[0-9A-Za-z_\-]{24,}/g) || []).forEach(function (t) { tokCount[t] = (tokCount[t] || 0) + 1; });
+    });
+    var lines = rawLines.map(function (s) { return stripGarbage(s, tokCount); }).filter(Boolean);
     var out = [];
     lines.forEach(function (l) {
-      if (l.length === 1 && out.length) {
+      if (out.length) {
         var prev = out[out.length - 1];
-        if (prev.length && !/[\s。；;，,：:]$/.test(prev)) { out[out.length - 1] = prev + l; return; }
+        /* 单字符碎片行：拼接到前一行 */
+        if (l.length === 1 && prev.length && !/[\s。；;，,：:]$/.test(prev)) { out[out.length - 1] = prev + l; return; }
+        /* 前行以冒号结尾（如"求职意向："）：短值续拼到同一行 */
+        if (/[：:]$/.test(prev) && l.length <= 12 && !/[。；;]/.test(l) && /^[\u4e00-\u9fff0-9A-Za-z\-.~至万K k\/]*$/.test(l)) {
+          out[out.length - 1] = prev + l; return;
+        }
       }
       out.push(l);
     });
@@ -3033,15 +3088,34 @@ document.addEventListener('change',function(e){
     for (var li = 0; li < lines.length; li++) {
       var l = lines[li];
       if (!/(大学|学院|学校|University)/.test(l)) continue;
-      /* 时间范围可能在上方几行（换行排版），中间可能隔着学历关键词行 */
-      if (!/\d{4}/.test(l) && li > 0) {
-        var prefixParts = [];
-        for (var lb = 1; lb <= 3; lb++) {
-          var pl = lines[li - lb];
-          if (!pl) break;
-          if (/(大学|学院|学校)/.test(pl)) break;
-          if (/\d{4}/.test(pl) && /[-–—~至到]/.test(pl)) { l = pl + " " + prefixParts.join(" ") + " " + l; break; }
-          if (eduDegreeRe.test(pl)) prefixParts.unshift(pl);
+      /* 时间可能在下方几行（平台排版：学校/学历/专业/时间逐行下排），
+         也可能在上方几行（换行排版），先向下扫描 */
+      var eduDownMajor = "";
+      if (!/\d{4}/.test(l)) {
+        var downTime = "", downDegree = "", downMajor = "";
+        for (var la2 = 1; la2 <= 3; la2++) {
+          var nl3 = lines[li + la2];
+          if (!nl3) break;
+          if (/(大学|学院|学校)/.test(nl3)) break;                 /* 下一条教育 */
+          if (/(公司|集团|事务所)/.test(nl3) && nl3.length > 12) break; /* 已离开教育区 */
+          if (/\d{4}/.test(nl3) && /[-–—~至到]/.test(nl3)) { downTime = nl3; break; }
+          if (eduDegreeRe.test(nl3) && !downDegree) { downDegree = nl3; continue; }
+          if (!downMajor && nl3.length >= 2 && nl3.length <= 20 &&
+              /^[\u4e00-\u9fa5A-Za-z0-9（）()·]+$/.test(nl3) && !/^(内容|业绩|职责|结果|项目)/.test(nl3)) { downMajor = nl3; continue; }
+          if (nl3.length > 20) break;
+        }
+        eduDownMajor = downMajor;
+        if (downTime) {
+          l = l + " " + downDegree + " " + downTime;
+        } else if (li > 0) {
+          var prefixParts = [];
+          for (var lb = 1; lb <= 3; lb++) {
+            var pl = lines[li - lb];
+            if (!pl) break;
+            if (/(大学|学院|学校)/.test(pl)) break;
+            if (/\d{4}/.test(pl) && /[-–—~至到]/.test(pl)) { l = pl + " " + prefixParts.join(" ") + " " + l; break; }
+            if (eduDegreeRe.test(pl)) prefixParts.unshift(pl);
+          }
         }
       }
       var schoolM = l.match(/([\u4e00-\u9fa5A-Za-z·]{2,20}(?:大学|学院|学校|University))/);
@@ -3069,9 +3143,11 @@ document.addEventListener('change',function(e){
       }
       /* 专业也可能在下一行 */
       if (!entry.major) {
-        var nl3 = lines[li + 1] || "";
-        if (/^[\u4e00-\u9fa5A-Za-z]{4,24}$/.test(nl3) && !/(大学|学院|学校)/.test(nl3) && !eduDegreeRe.test(nl3)) entry.major = nl3;
+        var nl4 = lines[li + 1] || "";
+        if (/^[\u4e00-\u9fa5A-Za-z]{4,24}$/.test(nl4) && !/(大学|学院|学校)/.test(nl4) && !eduDegreeRe.test(nl4)) entry.major = nl4;
       }
+      /* 平台排版向下扫描到的专业行优先 */
+      if (eduDownMajor && (!entry.major || /^\d/.test(entry.major))) entry.major = eduDownMajor;
       var eduKey = school + "|" + entry.start;
       if (schoolSeen[eduKey]) continue;
       schoolSeen[eduKey] = 1;
@@ -3093,11 +3169,30 @@ document.addEventListener('change',function(e){
       var ccm = wl.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
       if (ccm) company = ccm[0];
       var mergedLa = 0;
+      var upPos = "";
+      if (!company) {
+        /* 平台排版（猎聘等）：公司/职位/时间逐行下排，公司名在时间行上方
+           （含中间隔一行职位的情况："XX公司\nhrbp经理\n2024.01-至今"） */
+        for (var ub = 1; ub <= 2 && !company; ub++) {
+          var ul = lines[wi - ub];
+          if (!ul || /\d{4}/.test(ul) || ul.length > 30) continue;
+          var ucm = ul.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
+          if (ucm) {
+            company = ucm[0];
+            /* 公司在隔一行（wi-2）时，中间行（wi-1）为职位行 */
+            if (ub === 2) {
+              var midL = lines[wi - 1];
+              if (midL && !/\d{4}/.test(midL) && midL.length <= 20) upPos = midL.trim();
+            }
+          }
+        }
+      }
       if (!company) {
         /* 时间行本身无公司名：向后看几行找（换行排版，如"2021.07-\n至今\n在XX公司..."） */
         for (var la = 1; la <= 3 && !company; la++) {
           var nl2 = lines[wi + la];
           if (!nl2 || (/\d{4}/.test(nl2) && /[-–—~至到]/.test(nl2))) break;
+          if (nl2.length > 30) break; /* 长行是正文描述而非公司行 */
           if (/^(至今|现在|今)$/.test(nl2)) { wl = wl + " " + nl2; mergedLa = la; continue; }
           if (eduDegreeRe.test(nl2)) continue;
           if (/(大学|学院|学校)/.test(nl2) && !/(公司|工作|实习|集团)/.test(nl2)) continue;
@@ -3111,15 +3206,6 @@ document.addEventListener('change',function(e){
         }
       }
       var rest = wl.slice(wt.index + wt[0].length);
-      /* 猎聘等平台排版：公司名在时间行的上一行（"XX公司\n2020.05-至今"） */
-      if (!company && wi > 0) {
-        var pline = lines[wi - 1];
-        if (pline && !/\d{4}/.test(pline) && pline.length <= 30 &&
-            /[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/.test(pline)) {
-          var pcm = pline.match(/[\u4e00-\u9fa5A-Za-z0-9（）()]{2,25}(?:有限公司|股份公司|集团公司|责任公司|分公司|公司|集团|银行|事务所|工作室|研究院|研究所|医院|工厂|厂)/);
-          if (pcm) { company = pcm[0]; wl = pline + " " + wl; }
-        }
-      }
       if (!company) {
         var seg = rest.split(/[\s|｜,，;；]+/).filter(Boolean)[0] || "";
         /* 拒绝"至今"、"（1年3个月）"等时长/状态片段 */
@@ -3158,6 +3244,11 @@ document.addEventListener('change',function(e){
           .replace(/^至今$/, "")
           .trim();
         if (wEntry.pos.length < 2) wEntry.pos = "";
+      }
+      /* 平台排版：公司行与时间行之间的独立职位行（如"hrbp经理"） */
+      if (!wEntry.pos && upPos) {
+        wEntry.pos = upPos.replace(/(内容|职责|描述)[:：]?$/, "").trim();
+        if (wEntry.pos.length < 2 || /^\d/.test(wEntry.pos)) wEntry.pos = "";
       }
       var desc = [];
       for (var dj = wi + 1 + mergedLa; dj < Math.min(wi + 4 + mergedLa, lines.length); dj++) {
