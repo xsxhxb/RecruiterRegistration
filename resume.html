@@ -1228,10 +1228,11 @@ document.addEventListener('change',function(e){
     var NILBD = '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:right w:val="nil"/><w:bottom w:val="nil"/></w:tcBorders>';
     var SECTBD = '<w:tcBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:right w:val="nil"/><w:bottom w:val="single" w:sz="12" w:space="0" w:color="' + C.accent + '"/></w:tcBorders>';
 
-    function row(label, val) {
+    function row(label, val, tip) {
       if (!val) return "";
+      var valRuns = run(val, C.ink, 19) + (tip ? run("　" + tip, "94A3B8", 16) : "");
       return tr(tc(para(run(label, C.sub, 18), { center: true }), { w: 1250, fill: C.lblBg, vAlign: "center" })
-              + tc(para(run(val, C.ink, 19)), { vAlign: "center" }));
+              + tc(para(valRuns), { vAlign: "center" }));
     }
     function rowMulti(label, val) {
       if (!val) return "";
@@ -1295,7 +1296,7 @@ document.addEventListener('change',function(e){
 
     /* ===== 各分区（两列式，移动端逐行清晰） ===== */
     var basicRows =
-      row("姓名", d.name) + row("性别", d.gender) + row("出生年月", d.birth) +
+      row("姓名", d.name) + row("性别", d.gender) + row("出生年月", d.birth, "与身份证上一致") +
       row("身高", d.height ? d.height + " cm" : "") + row("体重", d.weight ? d.weight + " kg" : "") +
       row("婚姻状态", d.marital) + row("政治面貌", d.political) + row("民族", d.ethnic) +
       row("籍贯", d.nativePlace) + row("现居地", d.currentAddress);
@@ -1561,7 +1562,7 @@ document.addEventListener('change',function(e){
     }
 
     // 半列绘制（双列 KV 的左/右半）
-    function drawHalf(x, labelLines, valLines, fs, rowH, top) {
+    function drawHalf(x, labelLines, valLines, fs, rowH, top, tip) {
       ctx.fillStyle = CLR.lblBg;
       ctx.fillRect(x, top, LABEL_W, rowH);
       var lh = fs + 5;
@@ -1580,10 +1581,20 @@ document.addEventListener('change',function(e){
       for (var j = 0; j < n; j++) {
         ctx.fillText(valLines[j] || "", x + LABEL_W + 8, vy + 1); vy += lh;
       }
+      // 值旁小字提示（如"需与身份证上一致"）
+      if (tip && valLines[0]) {
+        setFont(fs, "normal");
+        var vwid = ctx.measureText(valLines[0]).width;
+        setFont(fs - 2.5, "normal");
+        ctx.fillStyle = "#94a3b8";
+        ctx.textBaseline = "middle";
+        ctx.fillText(tip, x + LABEL_W + 8 + vwid + 5, top + rowH / 2 + 1);
+        ctx.textBaseline = "alphabetic";
+      }
     }
 
-    // 双列 KV 行（左：标签+值，右：标签+值）
-    function drawRow2(l1, v1, l2, v2) {
+    // 双列 KV 行（左：标签+值，右：标签+值；tip1 为左值旁的小字提示）
+    function drawRow2(l1, v1, l2, v2, tip1) {
       var fs = 9.5;
       var halfW = CONTENT_W / 2;
       var valW = halfW - LABEL_W - 18;
@@ -1598,7 +1609,7 @@ document.addEventListener('change',function(e){
           Math.max(v1L.length || 1, l1L.length, v2L.length || 1, l2L.length) * (fs + 5) + ROW_PAD * 2);
         ensureSpace(rowH);
         var top = y, bottom = y + rowH;
-        drawHalf(MARGIN, l1L, v1L, fs, rowH, top);
+        drawHalf(MARGIN, l1L, v1L, fs, rowH, top, tip1);
         drawHalf(MARGIN + halfW, l2L, v2L, fs, rowH, top);
         hline(MARGIN, MARGIN + CONTENT_W, bottom, CLR.line, 0.5);
         y = bottom;
@@ -1738,7 +1749,7 @@ document.addEventListener('change',function(e){
     // ===== 基本信息（双列） =====
     drawSection("基本信息");
     drawRow2("姓名", data.name, "性别", data.gender);
-    drawRow2("出生年月", data.birth, "身高", data.height ? data.height + " cm" : "");
+    drawRow2("出生年月", data.birth, "身高", data.height ? data.height + " cm" : "", "与身份证上一致");
     drawRow2("体重", data.weight ? data.weight + " kg" : "", "婚姻状态", data.marital);
     drawRow2("政治面貌", data.political, "民族", data.ethnic);
     drawRow2("籍贯", data.nativePlace);
