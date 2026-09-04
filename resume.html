@@ -1190,11 +1190,11 @@ document.addEventListener('change',function(e){
 
   /* ===== WordprocessingML 生成（保持浅色表格设计） ===== */
   function buildResumeDocx(d) {
-    /* 配色（OOXML 用 6 位 hex，无 #） */
+    /* 配色（OOXML 用 6 位 hex，无 #；UI 层次递进：条目底 > 标签底 > 承诺底） */
     var C = {
-      ink: "1E293B", sub: "64748B", faint: "CBD5E1",
+      ink: "1E293B", sub: "4F5D6E", faint: "A5B3C2",
       accent: "0284C7", accentDark: "0369A1", eHeadInk: "0C4A6E",
-      lblBg: "F4F7FA", line: "DFE7EE", eHeadBg: "EAF4FD", softBg: "F8FAFC"
+      lblBg: "EAEFF4", line: "A5B4C3", eHeadBg: "D8E8F4", softBg: "EEF2F6"
     };
     function x(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
     /* 文本 run（sz 为半磅：9pt=18） */
@@ -1231,13 +1231,13 @@ document.addEventListener('change',function(e){
     function row(label, val, tip) {
       if (!val) return "";
       var valRuns = run(val, C.ink, 19) + (tip ? run("　" + tip, "94A3B8", 16) : "");
-      return tr(tc(para(run(label, C.sub, 18), { center: true }), { w: 1250, fill: C.lblBg, vAlign: "center" })
+      return tr(tc(para(run(label, C.sub, 18, true), { center: true }), { w: 1250, fill: C.lblBg, vAlign: "center" })
               + tc(para(valRuns), { vAlign: "center" }));
     }
     function rowMulti(label, val) {
       if (!val) return "";
       var ps = String(val).split("\n").map(function (ln) { return para(run(ln, C.ink, 19)); }).join("");
-      return tr(tc(para(run(label, C.sub, 18), { center: true }), { w: 1250, fill: C.lblBg, vAlign: "center" })
+      return tr(tc(para(run(label, C.sub, 18, true), { center: true }), { w: 1250, fill: C.lblBg, vAlign: "center" })
               + tc(ps, {}));
     }
     /* 分区标题：主色粗体 + 底部主色线 */
@@ -1344,7 +1344,7 @@ document.addEventListener('change',function(e){
 
     /* 表格整体属性：100% 宽 + 浅色细边框（0.5pt）+ 单元格内边距 */
     var tblBorders = ["top", "left", "bottom", "right", "insideH", "insideV"].map(function (s) {
-      return '<w:' + s + ' w:val="single" w:sz="4" w:space="0" w:color="' + C.line + '"/>';
+      return '<w:' + s + ' w:val="single" w:sz="6" w:space="0" w:color="' + C.line + '"/>';
     }).join("");
     var tableXml = '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/>'
       + '<w:tblBorders>' + tblBorders + '</w:tblBorders>'
@@ -1539,11 +1539,12 @@ document.addEventListener('change',function(e){
       ctx.stroke();
     }
 
-    // ===== 浅色系配色 =====
+    // ===== 浅色系配色（UI 层次递进：条目底 > 标签底 > 承诺底；
+    //      打印区分靠"边框线 + 标签加粗"双保险，底色保持浅雅） =====
     var CLR = {
-      ink: "#1e293b", sub: "#64748b", faint: "#cbd5e1",
+      ink: "#1e293b", sub: "#4f5d6e", faint: "#a5b3c2",
       accent: "#0284c7", accentDark: "#0c4a6e",
-      lblBg: "#f8fafc", line: "#eef2f7", eHeadBg: "#f0f9ff", promiseBg: "#f8fafc"
+      lblBg: "#eaeff4", line: "#a5b4c3", eHeadBg: "#d8e8f4", promiseBg: "#eef2f6"
     };
 
     // 分区标题：主色竖条 + 主色粗体 + 底部主色细线
@@ -1565,7 +1566,7 @@ document.addEventListener('change',function(e){
       ctx.fillStyle = CLR.lblBg;
       ctx.fillRect(x, top, LABEL_W, rowH);
       var lh = fs + 5;
-      setFont(fs, "normal");
+      setFont(fs, "bold");
       ctx.fillStyle = CLR.sub;
       var ly = top + (rowH - labelLines.length * lh) / 2 + fs;
       for (var i = 0; i < labelLines.length; i++) {
@@ -1638,8 +1639,8 @@ document.addEventListener('change',function(e){
       // 标签格背景（极浅灰）
       ctx.fillStyle = CLR.lblBg;
       ctx.fillRect(MARGIN, rowTop, LABEL_W, rowH);
-      // 标签文字
-      setFont(fontSize, "normal");
+      // 标签文字（加粗，与填写内容形成字重区分）
+      setFont(fontSize, "bold");
       ctx.fillStyle = CLR.sub;
       var labelLH = fontSize + 5;
       var labelY = rowTop + (rowH - labelLines.length * labelLH) / 2 + fontSize;
