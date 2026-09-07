@@ -478,18 +478,9 @@
   <div class="section">
     <div class="section-title"><span class="dot"></span>工作经历<span style="color:var(--error);margin-left:2px;">*</span></div>
     <div class="section-body">
-      <div class="hint" style="text-align:left;margin:0 0 8px;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">实习生可填写实习经历；若暂无任何工作 / 实习经历，请在"工作内容"中填写"无"。</div>
+      <div class="hint" style="text-align:left;margin:0 0 8px;padding:8px 12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">实习生可填写实习经历。</div>
       <div class="entries" id="workEntries"></div>
       <button type="button" class="add-btn" onclick="addEntry('work')">+ 添加工作经历</button>
-    </div>
-  </div>
-
-  <!-- 项目经历（多条目） -->
-  <div class="section">
-    <div class="section-title"><span class="dot"></span>项目经历</div>
-    <div class="section-body">
-      <div class="entries" id="projEntries"></div>
-      <button type="button" class="add-btn" onclick="addEntry('proj')">+ 添加项目经历</button>
     </div>
   </div>
 
@@ -633,15 +624,7 @@ var entryTemplates = {
     {n:'wkCompany',l:'公司',t:'text',ph:'公司或实习单位名称'},
     {n:'wkPos',l:'职位',t:'text',ph:'如：前端工程师 / 实习生'},
     {n:'wkSalary',l:'月薪',t:'text',ph:'例：15K'},
-    {n:'wkReason',l:'离职原因',t:'text',ph:'例：个人发展'},
-    {n:'wkDesc',l:'工作内容',t:'textarea',ph:'简要描述主要职责与成果；若无工作/实习经历请填"无"'}
-  ],
-  proj: [
-    {n:'pjStart',l:'开始时间',t:'month'},
-    {n:'pjEnd',l:'结束时间',t:'month'},
-    {n:'pjName',l:'项目名称',t:'text',ph:'例：某电商平台重构'},
-    {n:'pjRole',l:'担任角色',t:'text',ph:'例：前端负责人'},
-    {n:'pjDesc',l:'项目描述',t:'textarea',ph:'项目背景、技术栈、个人贡献与成果'}
+    {n:'wkReason',l:'离职原因',t:'text',ph:'例：个人发展'}
   ]
 };
 function addEntry(type){
@@ -678,7 +661,7 @@ function fieldInner(f){
   }
   return lbl+inp;
 }
-['edu','work','proj'].forEach(addEntry);
+['edu','work'].forEach(addEntry);
 
 /* 亲属联动 + 招聘渠道联动（内部推荐显示推荐人） */
 document.addEventListener('change',function(e){
@@ -891,11 +874,7 @@ document.addEventListener('change',function(e){
     ]);
     data.work = collectEntries('work', [
       ['wkStart','start'],['wkEnd','end'],['wkCompany','company'],
-      ['wkPos','pos'],['wkSalary','salary'],['wkReason','reason'],['wkDesc','desc']
-    ]);
-    data.proj = collectEntries('proj', [
-      ['pjStart','start'],['pjEnd','end'],['pjName','name'],
-      ['pjRole','role'],['pjDesc','desc']
+      ['wkPos','pos'],['wkSalary','salary'],['wkReason','reason']
     ]);
     data.signature = (form.signature||{}).value || '';
     data.signDate = (form.signDate||{}).value || '';
@@ -1063,7 +1042,6 @@ document.addEventListener('change',function(e){
     }
     restoreEntries('edu', d.edu || []);
     restoreEntries('work', d.work || []);
-    restoreEntries('proj', d.proj || []);
     // 亲属联动显示状态
     document.getElementById('relativeDetailWrap').style.display =
       (d.hasRelative === '有') ? 'block' : 'none';
@@ -1321,16 +1299,9 @@ document.addEventListener('change',function(e){
 
     var workInner = (d.work || []).map(function (e) {
       return entryHead((e.company || "—") + (e.pos ? "　·　" + e.pos : ""), fmtRange(e.start, e.end)) +
-             row("月薪", e.salary) + row("离职原因", e.reason) +
-             rowMulti("工作内容", e.desc);
+             row("月薪", e.salary) + row("离职原因", e.reason);
     }).join(gap());
     var workBlock = workInner ? sect("工作经历") + workInner : "";
-
-    var projInner = (d.proj || []).map(function (e) {
-      return entryHead((e.name || "—") + (e.role ? "　·　" + e.role : ""), fmtRange(e.start, e.end)) +
-             rowMulti("项目描述", e.desc);
-    }).join(gap());
-    var projBlock = projInner ? sect("项目经历") + projInner : "";
 
     var otherRows =
       rowMulti("专业技能", d.skills) + row("语言能力", d.language) +
@@ -1352,7 +1323,7 @@ document.addEventListener('change',function(e){
       + '</w:tblPr>'
       + '<w:tblGrid><w:gridCol w:w="2438"/><w:gridCol w:w="7314"/></w:tblGrid>'
       + sect("基本信息") + basicRows + sect("联系方式") + contactRows
-      + sect("教育与求职") + jobRows + eduBlock + workBlock + projBlock
+      + sect("教育与求职") + jobRows + eduBlock + workBlock
       + sect("技能与其他") + otherRows + commitment
       + '</w:tbl>';
 
@@ -1784,17 +1755,6 @@ document.addEventListener('change',function(e){
         if (i) y += 6;
         drawEntryTitle((e.company || '—') + (e.pos ? '　·　' + e.pos : ''), fmtRange(e.start, e.end));
         if (e.salary || e.reason) drawRow2("月薪", e.salary, "离职原因", e.reason);
-        if (e.desc) drawRow("工作内容", e.desc);
-      });
-    }
-
-    // ===== 项目经历 =====
-    if (data.proj && data.proj.length) {
-      drawSection("项目经历");
-      data.proj.forEach(function (e, i) {
-        if (i) y += 6;
-        drawEntryTitle((e.name || '—') + (e.role ? '　·　' + e.role : ''), fmtRange(e.start, e.end));
-        if (e.desc) drawRow("项目描述", e.desc);
       });
     }
 
@@ -1981,10 +1941,9 @@ document.addEventListener('change',function(e){
     if (!list.length) { addEntry(type); return; }
     var fieldMap = {
       edu: ['eduStart','eduEnd','eduSchool','eduMajor','eduDegree'],
-      work: ['wkStart','wkEnd','wkCompany','wkPos','wkSalary','wkReason','wkDesc'],
-      proj: ['pjStart','pjEnd','pjName','pjRole','pjDesc']
+      work: ['wkStart','wkEnd','wkCompany','wkPos','wkSalary','wkReason']
     };
-    var keys = { edu:['start','end','school','major','degree'], work:['start','end','company','pos','salary','reason','desc'], proj:['start','end','name','role','desc'] };
+    var keys = { edu:['start','end','school','major','degree'], work:['start','end','company','pos','salary','reason'] };
     list.forEach(function(item){
       addEntry(type);
       var entry = wrap.lastChild;
@@ -3604,7 +3563,7 @@ document.addEventListener('change',function(e){
       }
     }
     /* 多条目重置为一条空条目 */
-    ["edu", "work", "proj"].forEach(function (type) {
+    ["edu", "work"].forEach(function (type) {
       var wrap = document.getElementById(type + "Entries");
       if (wrap) {
         wrap.innerHTML = "";
@@ -3690,12 +3649,10 @@ document.addEventListener('change',function(e){
       edu: { container: "eduEntries", key: "school", label: "教育经历",
              fields: { start: "eduStart", end: "eduEnd", school: "eduSchool", major: "eduMajor", degree: "eduDegree" } },
       work: { container: "workEntries", key: "company", label: "工作经历",
-              fields: { start: "wkStart", end: "wkEnd", company: "wkCompany", pos: "wkPos", salary: "wkSalary", reason: "wkReason", desc: "wkDesc" } },
-      proj: { container: "projEntries", key: "name", label: "项目经历",
-              fields: { start: "pjStart", end: "pjEnd", name: "pjName", role: "pjRole", desc: "pjDesc" } }
+              fields: { start: "wkStart", end: "wkEnd", company: "wkCompany", pos: "wkPos", salary: "wkSalary", reason: "wkReason" } }
     };
-    var counts = { edu: 0, work: 0, proj: 0 };
-    ["edu", "work", "proj"].forEach(function (type) {
+    var counts = { edu: 0, work: 0 };
+    ["edu", "work"].forEach(function (type) {
       var cfg = entryCfg[type];
       var list = d[type] || [];
       if (!list.length) return;
