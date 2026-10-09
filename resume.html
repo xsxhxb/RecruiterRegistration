@@ -22,7 +22,7 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; padding: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-family: "SimSun", "STSong", "Songti SC", "NSimSun", serif;
     background: var(--bg);
     color: var(--text);
     font-size: 15px;
@@ -1403,7 +1403,7 @@ document.addEventListener('change',function(e){
           data: enc.encode('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             + '<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
             + '<w:docDefaults><w:rPrDefault><w:rPr>'
-            + '<w:rFonts w:ascii="PingFang SC" w:eastAsia="PingFang SC" w:hAnsi="PingFang SC" w:cs="PingFang SC"/>'
+            + '<w:rFonts w:ascii="SimSun" w:eastAsia="SimSun" w:hAnsi="SimSun" w:cs="SimSun"/>'
             + '<w:sz w:val="19"/><w:szCs w:val="19"/>'
             + '</w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="0" w:line="276" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
             + '</w:styles>')
@@ -1466,7 +1466,7 @@ document.addEventListener('change',function(e){
       if (y + h > A4_H - MARGIN - 10) newPage();
     }
     function setFont(size, weight) {
-      ctx.font = (weight || "normal") + " " + size + 'px "PingFang SC","Microsoft YaHei","Heiti SC","Noto Sans CJK SC",sans-serif';
+      ctx.font = (weight || "normal") + " " + size + 'px "SimSun","STSong","Songti SC","NSimSun",serif';
     }
     function wrapText(text, maxWidth, size, weight) {
       setFont(size, weight);
