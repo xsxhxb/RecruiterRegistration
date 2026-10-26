@@ -616,7 +616,7 @@ var entryTemplates = {
     {n:'eduEnd',l:'结束时间',t:'month',ph:''},
     {n:'eduSchool',l:'学校*',t:'text',ph:'例：浙江大学'},
     {n:'eduMajor',l:'专业',t:'text',ph:'例：计算机科学与技术'},
-    {n:'eduDegree',l:'学历*',t:'select',opts:['','大专','本科','硕士','博士']}
+    {n:'eduDegree',l:'学历*',t:'select',opts:['','高中/中专','大专','本科','硕士','博士']}
   ],
   work: [
     {n:'wkStart',l:'开始时间',t:'month'},
@@ -2066,7 +2066,6 @@ document.addEventListener('change',function(e){
     if (/高中|中专|职高|中技/.test(s)) return "高中/中专";
     return "";
   }
-
   /* ======================================================================
      DEFLATE 解压（RFC1951，用于 PDF 流 / ZIP 条目）
      ====================================================================== */
