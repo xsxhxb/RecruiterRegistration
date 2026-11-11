@@ -311,9 +311,9 @@
       </div>
       <div class="row">
         <div class="field">
-          <label class="label">出生年月<span class="req">*</span></label>
-          <input class="input" name="birth" type="month" required />
-          <div class="err-msg">请选择出生年月</div>
+          <label class="label">出生年月日<span class="req">*</span></label>
+          <input class="input" name="birth" type="date" required />
+          <div class="err-msg">请选择出生年月日</div>
           <div class="hint" style="text-align:left;margin-top:4px;padding:0">需与身份证上一致（仅用于核实法定就业年龄）</div>
         </div>
         <div class="field">
@@ -1260,7 +1260,7 @@ document.addEventListener('change',function(e){
     if (d.birth) subParts.push(d.birth);
     if (d.education) subParts.push(d.education);
     if (d.expYears) subParts.push(d.expYears + "年经验");
-    /* 单行摘要（与 PDF 一致）：性别 · 出生年月 · 学历 · 经验 · 面试岗位 · 电话 · 邮箱 */
+    /* 单行摘要（与 PDF 一致）：性别 · 出生年月日 · 学历 · 经验 · 面试岗位 · 电话 · 邮箱 */
     var hdParts = subParts.slice();
     if (d.position) hdParts.push("面试岗位：" + d.position);
     if (d.phone) hdParts.push(d.phone);
@@ -1273,7 +1273,7 @@ document.addEventListener('change',function(e){
 
     /* ===== 各分区（两列式，移动端逐行清晰） ===== */
     var basicRows =
-      row("姓名", d.name) + row("性别", d.gender) + row("出生年月", d.birth, "与身份证上一致") +
+      row("姓名", d.name) + row("性别", d.gender) + row("出生年月日", d.birth, "与身份证上一致") +
       row("身高", d.height ? d.height + " cm" : "") + row("体重", d.weight ? d.weight + " kg" : "") +
       row("婚姻状态", d.marital) + row("政治面貌", d.political) + row("民族", d.ethnic) +
       row("籍贯", d.nativePlace) + row("现居地", d.currentAddress);
@@ -1697,7 +1697,7 @@ document.addEventListener('change',function(e){
     ctx.fillStyle = "#0f172a";
     ctx.fillText(data.name || "—", MARGIN, y + 18);
     y += 27;
-    /* 单行摘要：性别 · 出生年月 · 学历 · 经验 · 面试岗位 · 电话 · 邮箱
+    /* 单行摘要：性别 · 出生年月日 · 学历 · 经验 · 面试岗位 · 电话 · 邮箱
        （A4 一行放下；超宽时从尾部去掉次要项：邮箱→电话→岗位） */
     var hdParts = subParts.slice();
     if (data.position) hdParts.push("面试岗位：" + data.position);
@@ -1717,7 +1717,7 @@ document.addEventListener('change',function(e){
     // ===== 基本信息（双列） =====
     drawSection("基本信息");
     drawRow2("姓名", data.name, "性别", data.gender);
-    drawRow2("出生年月", data.birth, "身高", data.height ? data.height + " cm" : "", "与身份证上一致");
+    drawRow2("出生年月日", data.birth, "身高", data.height ? data.height + " cm" : "", "与身份证上一致");
     drawRow2("体重", data.weight ? data.weight + " kg" : "", "婚姻状态", data.marital);
     drawRow2("政治面貌", data.political, "民族", data.ethnic);
     drawRow2("籍贯", data.nativePlace);
@@ -3154,10 +3154,15 @@ document.addEventListener('change',function(e){
       if (gm) d.gender = gm[0];
     }
 
-    /* 出生年月 */
-    var bm = all.match(/(?:出生|生日|出生日期|出生年月|生辰)\s*[:：]?\s*(\d{4})\s*[年.\/\-]\s*(\d{1,2})/);
-    if (!bm) bm = all.match(/(\d{4})\s*[年.\/\-]\s*(\d{1,2})\s*月?\s*出生/);
-    if (bm) d.birth = bm[1] + "-" + pad2(bm[2]);
+    /* 出生年月日 */
+    var bm = all.match(/(?:出生|生日|出生日期|出生年月|生辰)\s*[:：]?\s*(\d{4})\s*[年.\/\-]\s*(\d{1,2})\s*[月.\/\-]\s*(\d{1,2})/);
+    if (bm) {
+      d.birth = bm[1] + "-" + pad2(bm[2]) + "-" + pad2(bm[3]);
+    } else {
+      bm = all.match(/(?:出生|生日|出生日期|出生年月|生辰)\s*[:：]?\s*(\d{4})\s*[年.\/\-]\s*(\d{1,2})/);
+      if (!bm) bm = all.match(/(\d{4})\s*[年.\/\-]\s*(\d{1,2})\s*月?\s*出生/);
+      if (bm) d.birth = bm[1] + "-" + pad2(bm[2]) + "-01";
+    }
     if (!d.birth) {
       var am = all.match(/年\s*龄\s*[:：]?\s*(\d{2})\s*岁?/);
       if (am) d.birth = String(new Date().getFullYear() - (+am[1])) + "-01";
@@ -3621,7 +3626,7 @@ document.addEventListener('change',function(e){
 
     setVal("name", d.name, "姓名");
     setRadio("gender", d.gender, "性别");
-    setVal("birth", d.birth, "出生年月");
+    setVal("birth", d.birth, "出生年月日");
     setVal("height", d.height, "身高");
     setVal("weight", d.weight, "体重");
     setVal("marital", d.marital, "婚姻状态");
